@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
 
 const tabs = [
-  { href: "/single", label: "Single", shortcut: "1" },
-  { href: "/smart-crop", label: "AI Smart Crop", shortcut: "2" },
+  { href: "/crop", label: "Crop", shortcut: "1" },
+  { href: "/smart-crop", label: "Smart Crop", shortcut: "2" },
   { href: "/logo", label: "Logo", shortcut: "3" },
 ];
 

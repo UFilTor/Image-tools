@@ -12,7 +12,7 @@ export const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 export const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 export const SHORTCUT_MAP = {
-  modes: ["single", "smart-crop", "logo"] as const,
+  modes: ["crop", "smart-crop", "logo"] as const,
   ratios: [0, 1, 2, 3] as const, // indices into RATIOS
 };
 
