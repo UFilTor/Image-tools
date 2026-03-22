@@ -92,6 +92,8 @@ Server-side proxy to Anthropic. The browser sends image data (base64) to this ro
 Request: `POST /api/detect-focal` with `{ src: string, mime: string }`
 Response: `{ bbox: { x1, y1, x2, y2 } | null, label: string, error?: string }`
 
+Note: `next.config.ts` must increase the API route body size limit to handle base64 images up to 20MB.
+
 ### Understory design tokens
 
 The existing artifact defines a color palette (`C` object). These become Tailwind CSS custom colors in `tailwind.config.ts`, mapped from the Understory brand palette:
@@ -180,11 +182,10 @@ Unit tests with Vitest on all `lib/` modules. These are pure functions with no D
 - `clamp()` — boundary enforcement: crop stays within image bounds, minimum size enforced, aspect ratio maintained
 - `centered()` — default crop fills 80% of display area, centered
 - `centeredOnBbox()` — crop centers on bounding box, expands to fill available space, handles edge cases (bbox at image edge, bbox larger than display)
-- `dispSize()` — scales to fit viewport constraints
 
 **image-utils.ts:**
+- `dispSize()` — scales to fit viewport constraints, respects max width/height, maintains aspect ratio
 - `cropFilename()` — generates `name_crop.png` from input, handles missing extension, handles empty input
-- `dispSize()` — respects max width/height, maintains aspect ratio
 
 **logo-processing.ts:**
 - `removeBg()` — flood-fill from edges removes background color within tolerance
