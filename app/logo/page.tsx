@@ -2,6 +2,7 @@
 
 import { useLogoProcessor } from "@/hooks/use-logo-processor";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
 import { DropZone } from "@/components/ui/drop-zone";
 import { Button } from "@/components/ui/button";
 import { LogoControls } from "@/components/logo/logo-controls";
@@ -14,6 +15,8 @@ export default function LogoPage() {
     recolor, setRecolor, customHex, setCustomHex,
     preview, loadLogo, updateLogo, getExportCanvas, reset,
   } = useLogoProcessor();
+
+  useClipboardPaste(step === "upload" ? loadLogo : null);
 
   const handleDownload = () => {
     const canvas = getExportCanvas();

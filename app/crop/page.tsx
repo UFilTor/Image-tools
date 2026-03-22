@@ -3,6 +3,7 @@
 import { useSingleCrop } from "@/hooks/use-single-crop";
 import { useCropDrag } from "@/hooks/use-crop-drag";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
 import { DropZone } from "@/components/ui/drop-zone";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,7 @@ export default function SinglePage() {
     cropPx, cropPy, loadImage, pickRatio, goToRatio, reset,
   } = useSingleCrop();
   const { startDrag } = useCropDrag();
+  useClipboardPaste(step === "upload" ? loadImage : null);
 
   useKeyboardShortcuts({
     onEnter: step === "crop" && src ? () => dlCrop(src, nat, disp, crop, cropFilename(name)) : undefined,

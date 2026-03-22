@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMultiCrop } from "@/hooks/use-multi-crop";
 import { useCropDrag } from "@/hooks/use-crop-drag";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
 import { DropZone } from "@/components/ui/drop-zone";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ export default function SmartCropPage() {
     reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset,
   } = useMultiCrop();
   const { startDrag } = useCropDrag();
+  useClipboardPaste(step === "upload" ? loadImages : null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
 

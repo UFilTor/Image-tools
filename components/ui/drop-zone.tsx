@@ -3,6 +3,13 @@
 import { useRef, useState, ReactNode } from "react";
 import { ACCEPTED_TYPES, MAX_FILE_SIZE } from "@/lib/constants";
 
+function getPasteShortcut(): string {
+  if (typeof navigator !== "undefined" && navigator.platform?.toLowerCase().includes("mac")) {
+    return "Cmd+V";
+  }
+  return "Ctrl+V";
+}
+
 interface DropZoneProps {
   onFiles: (files: FileList) => void;
   multiple?: boolean;
@@ -62,6 +69,9 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
           }}
         />
         {children(over)}
+        <div className="text-[10px] text-text-dim mt-2">
+          or paste with {getPasteShortcut()}
+        </div>
       </div>
       {error && (
         <p className="mt-3 text-sm text-error font-medium text-center">{error}</p>
