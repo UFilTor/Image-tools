@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { SizeInput } from "@/components/ui/size-input";
 import { dlCrop, dlAllCropQueue } from "@/lib/download";
 import { cropFilename } from "@/lib/image-utils";
+import { CropPreview } from "@/components/crop/crop-preview";
 import { DlIcon } from "@/components/icons";
 
 export default function CropPage() {
@@ -68,11 +69,14 @@ export default function CropPage() {
             )}
             <SizeInput cropPx={cropPx} cropPy={cropPy} ratio={ratio} crop={crop} setCrop={setCrop} disp={disp} nat={nat} />
           </div>
-          <ZoomableEditor
-            src={src} disp={disp} crop={crop} setCrop={setCrop} ratio={ratio}
-            onDown={(e, t) => startDrag(e, t, crop, setCrop, ratio, disp.dw, disp.dh, zoom)}
-            zoom={zoom} setZoom={setZoom} pan={pan} setPan={setPan}
-          />
+          <div className="flex items-start gap-6">
+            <ZoomableEditor
+              src={src} disp={disp} crop={crop} setCrop={setCrop} ratio={ratio}
+              onDown={(e, t) => startDrag(e, t, crop, setCrop, ratio, disp.dw, disp.dh, zoom)}
+              zoom={zoom} setZoom={setZoom} pan={pan} setPan={setPan}
+            />
+            {src && <CropPreview src={src} nat={nat} disp={disp} crop={crop} />}
+          </div>
           {isMulti && (
             <ImageFilmstrip items={queue} currentIdx={currentIdx} onSelect={navigateTo} />
           )}

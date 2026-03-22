@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { SizeInput } from "@/components/ui/size-input";
 import { RatioPicker } from "@/components/crop/ratio-picker";
 import { ZoomableEditor } from "@/components/crop/zoomable-editor";
+import { CropPreview } from "@/components/crop/crop-preview";
 import { dlCrop, dlAll } from "@/lib/download";
 import { cropFilename } from "@/lib/image-utils";
 import { DlIcon, RetryIcon, GripIcon, RatioIcon } from "@/components/icons";
@@ -121,18 +122,21 @@ export default function SmartCropPage() {
               Focal: {editItem.focal.label}
             </p>
           )}
-          <ZoomableEditor
-            src={editItem.src}
-            disp={editItem.disp}
-            crop={editCrop}
-            setCrop={setEditCrop}
-            ratio={editItem.ratio}
-            onDown={(e, t) => startDrag(e, t, editCrop, setEditCrop, editItem.ratio, editItem.disp.dw, editItem.disp.dh, zoom)}
-            zoom={zoom}
-            setZoom={setZoom}
-            pan={pan}
-            setPan={setPan}
-          />
+          <div className="flex items-start gap-6">
+            <ZoomableEditor
+              src={editItem.src}
+              disp={editItem.disp}
+              crop={editCrop}
+              setCrop={setEditCrop}
+              ratio={editItem.ratio}
+              onDown={(e, t) => startDrag(e, t, editCrop, setEditCrop, editItem.ratio, editItem.disp.dw, editItem.disp.dh, zoom)}
+              zoom={zoom}
+              setZoom={setZoom}
+              pan={pan}
+              setPan={setPan}
+            />
+            <CropPreview src={editItem.src} nat={editItem.natural} disp={editItem.disp} crop={editCrop} />
+          </div>
           <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
             <SizeInput
               cropPx={editCropPx}
