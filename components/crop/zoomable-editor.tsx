@@ -9,7 +9,7 @@ interface ZoomableEditorProps {
   disp: DisplaySize;
   crop: CropRect;
   setCrop: (c: CropRect) => void;
-  ratio: number;
+  ratio: number | null;
   onDown: (e: React.MouseEvent, type: CropDragType) => void;
   zoom: number;
   setZoom: React.Dispatch<React.SetStateAction<number>>;

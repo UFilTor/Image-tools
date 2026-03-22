@@ -1,24 +1,35 @@
 import { CropRect, BoundingBox } from "./types";
 
-export function clamp(c: CropRect, dw: number, dh: number, r: number): CropRect {
+export function clamp(c: CropRect, dw: number, dh: number, r: number | null): CropRect {
   let { x, y, w, h } = c;
   w = Math.max(60, Math.min(w, dw));
-  h = w / r;
-  if (h > dh) {
-    h = dh;
-    w = h * r;
+  if (r !== null) {
+    h = w / r;
+    if (h > dh) {
+      h = dh;
+      w = h * r;
+    }
+  } else {
+    h = Math.max(60, Math.min(h, dh));
   }
   x = Math.max(0, Math.min(x, dw - w));
   y = Math.max(0, Math.min(y, dh - h));
   return { x, y, w: Math.round(w), h: Math.round(h) };
 }
 
-export function centered(dw: number, dh: number, r: number): CropRect {
-  let cw = dw * 0.8;
-  let ch = cw / r;
-  if (ch > dh * 0.8) {
+export function centered(dw: number, dh: number, r: number | null): CropRect {
+  let cw: number;
+  let ch: number;
+  if (r !== null) {
+    cw = dw * 0.8;
+    ch = cw / r;
+    if (ch > dh * 0.8) {
+      ch = dh * 0.8;
+      cw = ch * r;
+    }
+  } else {
+    cw = dw * 0.8;
     ch = dh * 0.8;
-    cw = ch * r;
   }
   return clamp(
     {
@@ -36,7 +47,7 @@ export function centered(dw: number, dh: number, r: number): CropRect {
 export function centeredOnBbox(
   dw: number,
   dh: number,
-  r: number,
+  r: number | null,
   bbox: BoundingBox | null,
 ): CropRect {
   if (!bbox) return centered(dw, dh, r);
@@ -48,12 +59,22 @@ export function centeredOnBbox(
     bcy = (by1 + by2) / 2,
     bw = bx2 - bx1,
     bh = by2 - by1;
-  let cw = Math.max(bw, bh * r),
+
+  let cw: number;
+  let ch: number;
+
+  if (r !== null) {
+    cw = Math.max(bw, bh * r);
     ch = cw / r;
-  if (ch < bh) {
+    if (ch < bh) {
+      ch = bh;
+      cw = ch * r;
+    }
+  } else {
+    cw = bw;
     ch = bh;
-    cw = ch * r;
   }
+
   const mhw = Math.min(bcx, dw - bcx),
     mhh = Math.min(bcy, dh - bcy);
   const ex = Math.min((mhw * 2) / cw, (mhh * 2) / ch);
@@ -63,11 +84,11 @@ export function centeredOnBbox(
   }
   if (cw > dw) {
     cw = dw;
-    ch = cw / r;
+    if (r !== null) ch = cw / r;
   }
   if (ch > dh) {
     ch = dh;
-    cw = ch * r;
+    if (r !== null) cw = ch * r;
   }
   return clamp(
     {

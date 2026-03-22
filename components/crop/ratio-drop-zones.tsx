@@ -12,6 +12,8 @@ export function RatioDropZones({ onDropWithRatio, onBrowse }: RatioDropZonesProp
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const clickedRatioRef = useRef<{ value: number | null; label: string } | null>(null);
+  const ratioInputRef = useRef<HTMLInputElement>(null);
 
   const validate = (files: FileList): FileList | null => {
     setError(null);
@@ -28,12 +30,18 @@ export function RatioDropZones({ onDropWithRatio, onBrowse }: RatioDropZonesProp
     return files;
   };
 
+  const handleCardClick = (value: number | null, label: string) => {
+    clickedRatioRef.current = { value, label };
+    ratioInputRef.current?.click();
+  };
+
   return (
     <div>
       <div className="grid grid-cols-2 gap-3 max-w-[480px] mx-auto">
         {RATIOS.map(({ label, sub, value }, idx) => (
           <div
             key={label}
+            onClick={() => handleCardClick(value, label)}
             onDragOver={(e) => { e.preventDefault(); setOverIdx(idx); }}
             onDragLeave={() => setOverIdx(null)}
             onDrop={(e) => {
@@ -43,8 +51,9 @@ export function RatioDropZones({ onDropWithRatio, onBrowse }: RatioDropZonesProp
               if (valid) onDropWithRatio(valid, value, label);
             }}
             className={`
-              border-2 border-dashed rounded-2xl py-10 px-6 cursor-default
+              border-2 border-dashed rounded-2xl py-10 px-6 cursor-pointer
               text-center transition-all duration-200 flex flex-col items-center gap-2
+              hover:border-primary hover:bg-primary-bg
               ${overIdx === idx ? "border-primary bg-primary-bg" : "border-border bg-surface"}
             `}
           >
@@ -55,11 +64,29 @@ export function RatioDropZones({ onDropWithRatio, onBrowse }: RatioDropZonesProp
               {sub}
             </span>
             <span className="text-[10px] text-text-dim mt-1">
-              Drop image here
+              Click or drop image here
             </span>
           </div>
         ))}
       </div>
+      {/* Hidden file input for ratio card clicks */}
+      <input
+        ref={ratioInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && clickedRatioRef.current) {
+            const valid = validate(e.target.files);
+            if (valid) {
+              onDropWithRatio(valid, clickedRatioRef.current.value, clickedRatioRef.current.label);
+            }
+          }
+          clickedRatioRef.current = null;
+          e.target.value = "";
+        }}
+      />
       <div className="text-center mt-6">
         <button
           onClick={() => inputRef.current?.click()}

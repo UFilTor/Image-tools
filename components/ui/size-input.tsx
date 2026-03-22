@@ -6,7 +6,7 @@ import { CropRect, DisplaySize, NaturalSize } from "@/lib/types";
 interface SizeInputProps {
   cropPx: number;
   cropPy: number;
-  ratio: number;
+  ratio: number | null;
   crop: CropRect;
   setCrop: (c: CropRect) => void;
   disp: DisplaySize;
@@ -22,10 +22,14 @@ export function SizeInput({ cropPx, cropPy, ratio, crop, setCrop, disp, nat }: S
     if (!newW || newW < 10) return;
     const scale = disp.dw / nat.w;
     let dw = newW * scale;
-    let dh = dw / ratio;
     dw = Math.max(60, Math.min(dw, disp.dw));
-    dh = dw / ratio;
-    if (dh > disp.dh) { dh = disp.dh; dw = dh * ratio; }
+    let dh: number;
+    if (ratio !== null) {
+      dh = dw / ratio;
+      if (dh > disp.dh) { dh = disp.dh; dw = dh * ratio; }
+    } else {
+      dh = crop.h; // keep current height in free mode
+    }
     const cx = crop.x + crop.w / 2;
     const cy = crop.y + crop.h / 2;
     setCrop({
@@ -41,10 +45,14 @@ export function SizeInput({ cropPx, cropPy, ratio, crop, setCrop, disp, nat }: S
     if (!newH || newH < 10) return;
     const scale = disp.dh / nat.h;
     let dh = newH * scale;
-    let dw = dh * ratio;
-    dh = Math.max(60 / ratio, Math.min(dh, disp.dh));
-    dw = dh * ratio;
-    if (dw > disp.dw) { dw = disp.dw; dh = dw / ratio; }
+    dh = Math.max(60, Math.min(dh, disp.dh));
+    let dw: number;
+    if (ratio !== null) {
+      dw = dh * ratio;
+      if (dw > disp.dw) { dw = disp.dw; dh = dw / ratio; }
+    } else {
+      dw = crop.w; // keep current width in free mode
+    }
     const cx = crop.x + crop.w / 2;
     const cy = crop.y + crop.h / 2;
     setCrop({

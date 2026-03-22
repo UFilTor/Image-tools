@@ -27,7 +27,7 @@ export function useSingleCrop() {
   const [queue, setQueue] = useState<CropQueueItem[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [pendingImages, setPendingImages] = useState<LoadedImage[]>([]);
-  const [ratio, setRatio] = useState(1);
+  const [ratio, setRatio] = useState<number | null>(1);
   const [ratioLabel, setRatioLabel] = useState("1:1");
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -72,19 +72,18 @@ export function useSingleCrop() {
         img.onload = () => {
           const nat = { w: img.width, h: img.height };
           const d = computeDisp(nat);
-          const eff = ratioVal ?? nat.w / nat.h;
           items[i] = {
             src: result,
             name: f.name,
             natural: nat,
             disp: d,
-            crop: centered(d.dw, d.dh, eff),
+            crop: centered(d.dw, d.dh, ratioVal),
             adjusted: false,
           };
           if (++done === arr.length) {
             setQueue(items);
             setCurrentIdx(0);
-            setRatio(eff);
+            setRatio(ratioVal);
             setRatioLabel(rLabel);
             setStep("crop");
             setZoom(1);
@@ -98,7 +97,6 @@ export function useSingleCrop() {
   }, []);
 
   const pickRatio = useCallback((v: number | null, label: string) => {
-    const eff = v ?? (pendingImages[0]?.nat.w || 1) / (pendingImages[0]?.nat.h || 1);
     const items: CropQueueItem[] = pendingImages.map((img) => {
       const d = computeDisp(img.nat);
       return {
@@ -106,13 +104,13 @@ export function useSingleCrop() {
         name: img.name,
         natural: img.nat,
         disp: d,
-        crop: centered(d.dw, d.dh, eff),
+        crop: centered(d.dw, d.dh, v),
         adjusted: false,
       };
     });
     setQueue(items);
     setCurrentIdx(0);
-    setRatio(eff);
+    setRatio(v);
     setRatioLabel(label);
     setStep("crop");
     setZoom(1);

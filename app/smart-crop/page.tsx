@@ -5,7 +5,7 @@ import { useMultiCrop } from "@/hooks/use-multi-crop";
 import { useCropDrag } from "@/hooks/use-crop-drag";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
-import { DropZone } from "@/components/ui/drop-zone";
+import { RatioDropZones } from "@/components/crop/ratio-drop-zones";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SizeInput } from "@/components/ui/size-input";
@@ -23,7 +23,7 @@ export default function SmartCropPage() {
     editCropPx, editCropPy,
     zoom, setZoom, pan, setPan,
     doneCount, errCount, analyzingCount,
-    loadImages, startAnalysis, batchRecrop, retryItem,
+    loadImages, loadAndAnalyzeWithRatio, startAnalysis, batchRecrop, retryItem,
     reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset,
   } = useMultiCrop();
   const { startDrag } = useCropDrag();
@@ -43,39 +43,24 @@ export default function SmartCropPage() {
     onRight: isEdit ? () => navigateEdit("next") : undefined,
   });
 
-  /* ── Upload step ── */
+  /* -- Upload step -- */
   if (step === "upload") {
     return (
       <div className="w-full max-w-[1200px]">
-        <div className="max-w-[460px] w-full mx-auto mt-16 animate-fadeUp">
+        <div className="max-w-[520px] w-full mx-auto mt-16 animate-fadeUp">
           <div className="text-center mb-8">
             <h1 className="text-[28px] font-bold mb-2 tracking-tight">AI Smart Crop</h1>
             <p className="text-[15px] text-text-muted leading-relaxed">
-              Upload images, pick a ratio, and let AI find the best crop.
+              Pick a ratio and upload images, or browse to choose a ratio later.
             </p>
           </div>
-          <DropZone onFiles={loadImages} multiple>
-            {(over) => (
-              <>
-                <div className="w-14 h-14 rounded-[14px] bg-primary-bg flex items-center justify-center mx-auto mb-4">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#022C12" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <rect x="7" y="7" width="18" height="18" rx="2" ry="2" opacity="0.4" />
-                  </svg>
-                </div>
-                <p className={`text-[15px] font-medium ${over ? "text-primary" : "text-text-secondary"}`}>
-                  Drop images here or <span className="text-primary font-bold">browse</span>
-                </p>
-                <p className="text-xs mt-2 text-text-dim">PNG, JPG, or WebP &middot; multiple files supported</p>
-              </>
-            )}
-          </DropZone>
+          <RatioDropZones onDropWithRatio={loadAndAnalyzeWithRatio} onBrowse={loadImages} />
         </div>
       </div>
     );
   }
 
-  /* ── Ratio step ── */
+  /* -- Ratio step -- */
   if (step === "ratio") {
     return (
       <div className="w-full max-w-[1200px]">
@@ -90,7 +75,7 @@ export default function SmartCropPage() {
     );
   }
 
-  /* ── Recrop (change ratio) ── */
+  /* -- Recrop (change ratio) -- */
   if (step === "recrop") {
     return (
       <div className="w-full max-w-[1200px]">
@@ -105,7 +90,7 @@ export default function SmartCropPage() {
     );
   }
 
-  /* ── Edit view ── */
+  /* -- Edit view -- */
   if (isEdit && editItem && editCrop) {
     return (
       <div className="w-full max-w-[1200px]">
@@ -128,8 +113,8 @@ export default function SmartCropPage() {
               disp={editItem.disp}
               crop={editCrop}
               setCrop={setEditCrop}
-              ratio={editItem.ratio}
-              onDown={(e, t) => startDrag(e, t, editCrop, setEditCrop, editItem.ratio, editItem.disp.dw, editItem.disp.dh, zoom)}
+              ratio={ratio}
+              onDown={(e, t) => startDrag(e, t, editCrop, setEditCrop, ratio, editItem.disp.dw, editItem.disp.dh, zoom)}
               zoom={zoom}
               setZoom={setZoom}
               pan={pan}
@@ -141,7 +126,7 @@ export default function SmartCropPage() {
             <SizeInput
               cropPx={editCropPx}
               cropPy={editCropPy}
-              ratio={editItem.ratio}
+              ratio={ratio}
               crop={editCrop}
               setCrop={setEditCrop}
               disp={editItem.disp}
@@ -174,7 +159,7 @@ export default function SmartCropPage() {
     );
   }
 
-  /* ── Review grid ── */
+  /* -- Review grid -- */
   return (
     <div className="w-full max-w-[1200px]">
       <div className="animate-fadeUp">

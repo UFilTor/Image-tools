@@ -11,7 +11,7 @@ type MultiStep = "upload" | "ratio" | "review" | "recrop";
 export function useMultiCrop() {
   const [step, setStep] = useState<MultiStep>("upload");
   const [items, setItems] = useState<MultiCropItem[]>([]);
-  const [ratio, setRatio] = useState(1);
+  const [ratio, setRatio] = useState<number | null>(1);
   const [ratioLabel, setRatioLabel] = useState("1:1");
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [editCrop, setEditCrop] = useState<CropRect | null>(null);
@@ -57,7 +57,7 @@ export function useMultiCrop() {
           const r = ratioVal ?? next[idx].ratio;
           next[idx] = {
             ...next[idx], status: "done", ratio: r,
-            crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, r, next[idx].focal!.bbox),
+            crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, ratioVal, next[idx].focal!.bbox),
           };
           return next;
         });
@@ -69,7 +69,7 @@ export function useMultiCrop() {
         const r = ratioVal ?? next[idx].ratio;
         next[idx] = {
           ...next[idx], focal, status: focal.error ? "error" : "done", ratio: r,
-          crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, r, focal.bbox),
+          crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, ratioVal, focal.bbox),
         };
         return next;
       });
@@ -78,7 +78,7 @@ export function useMultiCrop() {
 
   const startAnalysis = useCallback((ratioVal: number | null, rLabel: string) => {
     setRatioLabel(rLabel);
-    setRatio(ratioVal ?? 1);
+    setRatio(ratioVal);
     const withStatus = items.map((it) => ({
       ...it,
       status: (it.focal?.bbox && !it.focal?.error ? "recalculating" : "analyzing") as MultiCropItem["status"],
@@ -89,15 +89,50 @@ export function useMultiCrop() {
     runAnalysis(withStatus, ratioVal);
   }, [items, runAnalysis]);
 
+  const loadAndAnalyzeWithRatio = useCallback((files: FileList, ratioVal: number | null, rLabel: string) => {
+    const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (!arr.length) return;
+    const out: (MultiCropItem | null)[] = new Array(arr.length).fill(null);
+    let done = 0;
+    arr.forEach((f, i) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const src = e.target?.result as string;
+        const img = new Image();
+        img.onload = () => {
+          const maxW = Math.min(window.innerWidth - 96, img.width);
+          const maxH = Math.min(window.innerHeight - 230, img.height);
+          out[i] = {
+            src, name: f.name, mime: f.type,
+            natural: { w: img.width, h: img.height },
+            disp: dispSize(img.width, img.height, maxW, maxH),
+            status: "analyzing", focal: null, crop: null,
+            ratio: ratioVal ?? img.width / img.height,
+          };
+          if (++done === arr.length) {
+            const loaded = out as MultiCropItem[];
+            setItems(loaded);
+            setRatio(ratioVal);
+            setRatioLabel(rLabel);
+            setStep("review");
+            runAnalysis(loaded, ratioVal);
+          }
+        };
+        img.src = src;
+      };
+      reader.readAsDataURL(f);
+    });
+  }, [runAnalysis]);
+
   const batchRecrop = useCallback((ratioVal: number | null, rLabel: string) => {
     setRatioLabel(rLabel);
-    setRatio(ratioVal ?? 1);
+    setRatio(ratioVal);
     const updated = items.map((it) => {
       const effR = ratioVal ?? it.natural.w / it.natural.h;
       if (it.focal?.bbox && !it.focal?.error) {
         return {
           ...it, ratio: effR, status: "done" as const,
-          crop: centeredOnBbox(it.disp.dw, it.disp.dh, effR, it.focal.bbox),
+          crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, it.focal.bbox),
         };
       }
       return { ...it, ratio: effR, status: "analyzing" as const };
@@ -120,12 +155,12 @@ export function useMultiCrop() {
         const next = [...prev];
         next[idx] = {
           ...next[idx], focal, status: focal.error ? "error" : "done",
-          crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, next[idx].ratio, focal.bbox),
+          crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, ratio, focal.bbox),
         };
         return next;
       });
     })();
-  }, [items]);
+  }, [items, ratio]);
 
   const reorderItems = useCallback((fromIdx: number, toIdx: number) => {
     setItems((prev) => {
@@ -193,7 +228,7 @@ export function useMultiCrop() {
     editCropPx, editCropPy,
     zoom, setZoom, pan, setPan,
     doneCount, errCount, analyzingCount,
-    loadImages, startAnalysis, batchRecrop, retryItem,
+    loadImages, loadAndAnalyzeWithRatio, startAnalysis, batchRecrop, retryItem,
     reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset,
   };
 }

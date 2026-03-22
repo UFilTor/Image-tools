@@ -9,7 +9,7 @@ interface DragState {
   sx: number;
   sy: number;
   sc: CropRect;
-  r: number;
+  r: number | null;
   dw: number;
   dh: number;
   set: (c: CropRect) => void;
@@ -31,7 +31,32 @@ export function useCropDrag() {
       if (type === "move") {
         c.x = sc.x + dx;
         c.y = sc.y + dy;
+      } else if (r === null) {
+        // Free ratio: width and height resize independently
+        const isL = ["tl", "l", "bl"].includes(type);
+        const isR = ["tr", "r", "br"].includes(type);
+        const isT = ["tl", "t", "tr"].includes(type);
+        const isB = ["bl", "b", "br"].includes(type);
+
+        let nw = sc.w;
+        let nh = sc.h;
+
+        if (isL) { nw = sc.w - dx; c.x = sc.x + dx; }
+        else if (isR) { nw = sc.w + dx; }
+
+        if (isT) { nh = sc.h - dy; c.y = sc.y + dy; }
+        else if (isB) { nh = sc.h + dy; }
+
+        nw = Math.max(60, nw);
+        nh = Math.max(60, nh);
+
+        if (isL) { c.x = sc.x + sc.w - nw; }
+        if (isT) { c.y = sc.y + sc.h - nh; }
+
+        c.w = nw;
+        c.h = nh;
       } else {
+        // Fixed ratio
         const isL = ["tl", "l", "bl"].includes(type);
         const isT = ["tl", "t", "tr"].includes(type);
         let nw = isL
@@ -66,7 +91,7 @@ export function useCropDrag() {
     type: CropDragType,
     crop: CropRect,
     setCrop: (c: CropRect) => void,
-    ratio: number,
+    ratio: number | null,
     dw: number,
     dh: number,
     zoom = 1,
