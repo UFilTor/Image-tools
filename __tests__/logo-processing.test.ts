@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { removeBg, recolorCanvas, canvasToDataURL } from "@/lib/logo-processing";
+import { removeBg, recolorCanvas, canvasToDataURL, hasTransparency } from "@/lib/logo-processing";
 
 // The default canvas mock doesn't store pixel data. We patch getImageData/putImageData
 // on each canvas context so that pixel-level tests work correctly.
@@ -119,6 +119,44 @@ function fillRectPixels(
   }
   ctx.putImageData(data, 0, 0);
 }
+
+describe("hasTransparency", () => {
+  it("returns false for fully opaque canvas", () => {
+    const cv = createTestCanvas(10, 10);
+    fillCanvasPixels(cv, 255, 0, 0, 255);
+    expect(hasTransparency(cv)).toBe(false);
+  });
+
+  it("returns true for canvas with transparent pixels", () => {
+    const cv = createTestCanvas(10, 10);
+    fillCanvasPixels(cv, 255, 0, 0, 255);
+    // Make top-left quarter transparent
+    fillRectPixels(cv, 0, 0, 5, 5, 0, 0, 0, 0);
+    expect(hasTransparency(cv)).toBe(true);
+  });
+});
+
+describe("removeBg (improved)", () => {
+  it("preserves enclosed areas that match background color", () => {
+    // Create a 100x100 white canvas
+    const cv = createTestCanvas(100, 100);
+    fillCanvasPixels(cv, 255, 255, 255, 255);
+    // Draw a dark rectangle outline (thick border)
+    fillRectPixels(cv, 30, 30, 40, 40, 0, 0, 0, 255);
+    // Clear the inside to white (enclosed area matching background)
+    fillRectPixels(cv, 35, 35, 30, 30, 255, 255, 255, 255);
+
+    removeBg(cv, 40);
+    const data = cv.getContext("2d")!.getImageData(0, 0, 100, 100).data;
+
+    // Corner pixel (outer background) should be transparent
+    expect(data[3]).toBe(0);
+
+    // Inner white pixel at (50, 50) should be PRESERVED (opaque)
+    const innerIdx = (50 * 100 + 50) * 4;
+    expect(data[innerIdx + 3]).toBeGreaterThan(0);
+  });
+});
 
 describe("removeBg", () => {
   it("makes edge-matching pixels transparent", () => {

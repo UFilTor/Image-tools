@@ -1,3 +1,12 @@
+export function hasTransparency(canvas: HTMLCanvasElement): boolean {
+  const ctx = canvas.getContext("2d")!;
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] < 250) return true;
+  }
+  return false;
+}
+
 export function removeBg(canvas: HTMLCanvasElement, tolerance: number): HTMLCanvasElement {
   const ctx = canvas.getContext("2d")!;
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -5,6 +14,7 @@ export function removeBg(canvas: HTMLCanvasElement, tolerance: number): HTMLCanv
   const w = canvas.width,
     h = canvas.height;
 
+  // Sample background color from corners
   const samples: [number, number, number][] = [];
   for (const [sx, sy] of [
     [0, 0], [w - 5, 0], [0, h - 5], [w - 5, h - 5],
@@ -19,17 +29,30 @@ export function removeBg(canvas: HTMLCanvasElement, tolerance: number): HTMLCanv
   const bgG = Math.round(samples.reduce((s, c) => s + c[1], 0) / samples.length);
   const bgB = Math.round(samples.reduce((s, c) => s + c[2], 0) / samples.length);
 
-  const visited = new Uint8Array(w * h);
-  const queue: number[] = [];
   const tol = tolerance * tolerance * 3;
+  const edgeThreshold = 60 * 60 * 3; // edge-strength threshold
 
-  const match = (i: number) => {
+  const matchBg = (i: number) => {
     const dr = px[i] - bgR,
       dg = px[i + 1] - bgG,
       db = px[i + 2] - bgB;
     return dr * dr + dg * dg + db * db <= tol;
   };
 
+  // Edge strength: color distance between two adjacent pixels
+  const edgeStrength = (i: number, j: number) => {
+    const dr = px[i] - px[j],
+      dg = px[i + 1] - px[j + 1],
+      db = px[i + 2] - px[j + 2];
+    return dr * dr + dg * dg + db * db;
+  };
+
+  // Pass 1: Mark outer background region (don't remove yet)
+  const toRemove = new Uint8Array(w * h);
+  const visited = new Uint8Array(w * h);
+  const queue: number[] = [];
+
+  // Seed from edges
   for (let x = 0; x < w; x++) {
     queue.push(x);
     queue.push((h - 1) * w + x);
@@ -46,8 +69,8 @@ export function removeBg(canvas: HTMLCanvasElement, tolerance: number): HTMLCanv
   while (queue.length) {
     const idx = queue.pop()!;
     const pi = idx * 4;
-    if (match(pi)) {
-      px[pi + 3] = 0;
+    if (matchBg(pi)) {
+      toRemove[idx] = 1;
       const x = idx % w,
         y = (idx - x) / w;
       for (const [nx, ny] of [
@@ -56,11 +79,22 @@ export function removeBg(canvas: HTMLCanvasElement, tolerance: number): HTMLCanv
         if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
           const ni = ny * w + nx;
           if (!visited[ni]) {
-            visited[ni] = 1;
-            queue.push(ni);
+            // Edge-strength check: don't cross strong color boundaries
+            const npi = ni * 4;
+            if (edgeStrength(pi, npi) < edgeThreshold) {
+              visited[ni] = 1;
+              queue.push(ni);
+            }
           }
         }
       }
+    }
+  }
+
+  // Pass 2: Apply removal only to marked pixels
+  for (let i = 0; i < w * h; i++) {
+    if (toRemove[i]) {
+      px[i * 4 + 3] = 0;
     }
   }
 
