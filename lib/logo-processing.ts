@@ -30,7 +30,6 @@ export function removeBg(canvas: HTMLCanvasElement, tolerance: number): HTMLCanv
   const bgB = Math.round(samples.reduce((s, c) => s + c[2], 0) / samples.length);
 
   const tol = tolerance * tolerance * 3;
-  const edgeThreshold = 60 * 60 * 3; // edge-strength threshold
 
   const matchBg = (i: number) => {
     const dr = px[i] - bgR,
@@ -39,52 +38,45 @@ export function removeBg(canvas: HTMLCanvasElement, tolerance: number): HTMLCanv
     return dr * dr + dg * dg + db * db <= tol;
   };
 
-  // Edge strength: color distance between two adjacent pixels
-  const edgeStrength = (i: number, j: number) => {
-    const dr = px[i] - px[j],
-      dg = px[i + 1] - px[j + 1],
-      db = px[i + 2] - px[j + 2];
-    return dr * dr + dg * dg + db * db;
-  };
-
-  // Pass 1: Mark outer background region (don't remove yet)
+  // Pass 1: Mark outer background region via flood fill from edges.
+  // Only queue neighbors that themselves match the background color,
+  // so the fill cannot cross dark strokes into enclosed letter areas.
   const toRemove = new Uint8Array(w * h);
   const visited = new Uint8Array(w * h);
   const queue: number[] = [];
 
-  // Seed from edges
+  // Seed from edges — only if pixel matches background
   for (let x = 0; x < w; x++) {
-    queue.push(x);
-    queue.push((h - 1) * w + x);
-    visited[x] = 1;
-    visited[(h - 1) * w + x] = 1;
+    for (const idx of [x, (h - 1) * w + x]) {
+      if (!visited[idx]) {
+        visited[idx] = 1;
+        if (matchBg(idx * 4)) queue.push(idx);
+      }
+    }
   }
   for (let y = 1; y < h - 1; y++) {
-    queue.push(y * w);
-    queue.push(y * w + w - 1);
-    visited[y * w] = 1;
-    visited[y * w + w - 1] = 1;
+    for (const idx of [y * w, y * w + w - 1]) {
+      if (!visited[idx]) {
+        visited[idx] = 1;
+        if (matchBg(idx * 4)) queue.push(idx);
+      }
+    }
   }
 
   while (queue.length) {
     const idx = queue.pop()!;
-    const pi = idx * 4;
-    if (matchBg(pi)) {
-      toRemove[idx] = 1;
-      const x = idx % w,
-        y = (idx - x) / w;
-      for (const [nx, ny] of [
-        [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1],
-      ] as [number, number][]) {
-        if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-          const ni = ny * w + nx;
-          if (!visited[ni]) {
-            // Edge-strength check: don't cross strong color boundaries
-            const npi = ni * 4;
-            if (edgeStrength(pi, npi) < edgeThreshold) {
-              visited[ni] = 1;
-              queue.push(ni);
-            }
+    toRemove[idx] = 1;
+    const x = idx % w,
+      y = (idx - x) / w;
+    for (const [nx, ny] of [
+      [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1],
+    ] as [number, number][]) {
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+        const ni = ny * w + nx;
+        if (!visited[ni]) {
+          visited[ni] = 1;
+          if (matchBg(ni * 4)) {
+            queue.push(ni);
           }
         }
       }

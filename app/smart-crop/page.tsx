@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { SizeInput } from "@/components/ui/size-input";
 import { RatioPicker } from "@/components/crop/ratio-picker";
 import { ZoomableEditor } from "@/components/crop/zoomable-editor";
-import { CropPreview } from "@/components/crop/crop-preview";
+import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
 import { dlCrop, dlAll } from "@/lib/download";
 import { cropFilename } from "@/lib/image-utils";
 import { DlIcon, RetryIcon, GripIcon, RatioIcon } from "@/components/icons";
@@ -49,12 +49,12 @@ export default function SmartCropPage() {
       <div className="w-full max-w-[1200px]">
         <div className="max-w-[520px] w-full mx-auto mt-16 animate-fadeUp">
           <div className="text-center mb-8">
-            <h1 className="text-[28px] font-bold mb-2 tracking-tight">AI Smart Crop</h1>
+            <h1 className="text-[28px] font-bold mb-2 tracking-tight">Smart Crop</h1>
             <p className="text-[15px] text-text-muted leading-relaxed">
-              Pick a ratio and upload images, or browse to choose a ratio later.
+              Pick a ratio and drop images to start.
             </p>
           </div>
-          <RatioDropZones onDropWithRatio={loadAndAnalyzeWithRatio} onBrowse={loadImages} />
+          <RatioDropZones onDropWithRatio={loadAndAnalyzeWithRatio} />
         </div>
       </div>
     );
@@ -107,21 +107,43 @@ export default function SmartCropPage() {
               Focal: {editItem.focal.label}
             </p>
           )}
-          <div className="flex items-start gap-6">
-            <ZoomableEditor
-              src={editItem.src}
-              disp={editItem.disp}
-              crop={editCrop}
-              setCrop={setEditCrop}
-              ratio={ratio}
-              onDown={(e, t) => startDrag(e, t, editCrop, setEditCrop, ratio, editItem.disp.dw, editItem.disp.dh, zoom)}
-              zoom={zoom}
-              setZoom={setZoom}
-              pan={pan}
-              setPan={setPan}
-            />
-            <CropPreview src={editItem.src} nat={editItem.natural} disp={editItem.disp} crop={editCrop} />
-          </div>
+          <ZoomableEditor
+            src={editItem.src}
+            disp={editItem.disp}
+            crop={editCrop}
+            setCrop={setEditCrop}
+            ratio={ratio}
+            onDown={(e, t) => startDrag(e, t, editCrop, setEditCrop, ratio, editItem.disp.dw, editItem.disp.dh, zoom)}
+            zoom={zoom}
+            setZoom={setZoom}
+            pan={pan}
+            setPan={setPan}
+          />
+          {items.length > 1 && (
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={() => navigateEdit("prev")} disabled={editIdx === 0}>
+                &larr; Prev
+              </Button>
+              <ImageFilmstrip
+                items={items.map((it, idx) => ({
+                  src: it.src,
+                  name: it.name,
+                  natural: it.natural,
+                  disp: it.disp,
+                  crop: it.crop ?? { x: 0, y: 0, w: 0, h: 0 },
+                  adjusted: false,
+                }))}
+                currentIdx={editIdx}
+                onSelect={(idx) => {
+                  saveAndCloseEdit();
+                  setTimeout(() => openEdit(idx), 0);
+                }}
+              />
+              <Button size="sm" onClick={() => navigateEdit("next")} disabled={editIdx === items.length - 1}>
+                Next &rarr;
+              </Button>
+            </div>
+          )}
           <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
             <SizeInput
               cropPx={editCropPx}
@@ -132,20 +154,6 @@ export default function SmartCropPage() {
               disp={editItem.disp}
               nat={editItem.natural}
             />
-            <Button
-              onClick={() => navigateEdit("prev")}
-              disabled={editIdx === 0}
-              size="sm"
-            >
-              &larr; Prev
-            </Button>
-            <Button
-              onClick={() => navigateEdit("next")}
-              disabled={editIdx === items.length - 1}
-              size="sm"
-            >
-              Next &rarr;
-            </Button>
             <Button onClick={saveAndCloseEdit}>Save &amp; back</Button>
             <Button
               variant="primary"

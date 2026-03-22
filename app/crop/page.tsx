@@ -13,7 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { SizeInput } from "@/components/ui/size-input";
 import { dlCrop, dlAllCropQueue } from "@/lib/download";
 import { cropFilename } from "@/lib/image-utils";
-import { CropPreview } from "@/components/crop/crop-preview";
 import { DlIcon } from "@/components/icons";
 
 export default function CropPage() {
@@ -44,10 +43,10 @@ export default function CropPage() {
           <div className="text-center mb-8">
             <h1 className="text-[28px] font-bold mb-2 tracking-tight">Crop</h1>
             <p className="text-[15px] text-text-muted leading-relaxed">
-              Drop images onto a ratio to start, or browse to choose later.
+              Drop images onto a ratio to start cropping.
             </p>
           </div>
-          <RatioDropZones onDropWithRatio={loadWithRatio} onBrowse={loadImage} />
+          <RatioDropZones onDropWithRatio={loadWithRatio} />
         </div>
       )}
 
@@ -69,16 +68,21 @@ export default function CropPage() {
             )}
             <SizeInput cropPx={cropPx} cropPy={cropPy} ratio={ratio} crop={crop} setCrop={setCrop} disp={disp} nat={nat} />
           </div>
-          <div className="flex items-start gap-6">
-            <ZoomableEditor
-              src={src} disp={disp} crop={crop} setCrop={setCrop} ratio={ratio}
-              onDown={(e, t) => startDrag(e, t, crop, setCrop, ratio, disp.dw, disp.dh, zoom)}
-              zoom={zoom} setZoom={setZoom} pan={pan} setPan={setPan}
-            />
-            {src && <CropPreview src={src} nat={nat} disp={disp} crop={crop} />}
-          </div>
+          <ZoomableEditor
+            src={src} disp={disp} crop={crop} setCrop={setCrop} ratio={ratio}
+            onDown={(e, t) => startDrag(e, t, crop, setCrop, ratio, disp.dw, disp.dh, zoom)}
+            zoom={zoom} setZoom={setZoom} pan={pan} setPan={setPan}
+          />
           {isMulti && (
-            <ImageFilmstrip items={queue} currentIdx={currentIdx} onSelect={navigateTo} />
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={() => navigateTo(currentIdx - 1)} disabled={currentIdx === 0}>
+                &larr; Prev
+              </Button>
+              <ImageFilmstrip items={queue} currentIdx={currentIdx} onSelect={navigateTo} />
+              <Button size="sm" onClick={() => navigateTo(currentIdx + 1)} disabled={currentIdx === queue.length - 1}>
+                Next &rarr;
+              </Button>
+            </div>
           )}
           <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
             <Button onClick={goToRatio}>Change ratio</Button>

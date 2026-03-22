@@ -21,15 +21,15 @@ export function centered(dw: number, dh: number, r: number | null): CropRect {
   let cw: number;
   let ch: number;
   if (r !== null) {
-    cw = dw * 0.8;
+    cw = dw;
     ch = cw / r;
-    if (ch > dh * 0.8) {
-      ch = dh * 0.8;
+    if (ch > dh) {
+      ch = dh;
       cw = ch * r;
     }
   } else {
-    cw = dw * 0.8;
-    ch = dh * 0.8;
+    cw = dw;
+    ch = dh;
   }
   return clamp(
     {

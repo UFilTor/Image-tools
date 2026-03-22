@@ -5,13 +5,11 @@ import { RATIOS, ACCEPTED_TYPES, MAX_FILE_SIZE } from "@/lib/constants";
 
 interface RatioDropZonesProps {
   onDropWithRatio: (files: FileList, ratioValue: number | null, ratioLabel: string) => void;
-  onBrowse: (files: FileList) => void;
 }
 
-export function RatioDropZones({ onDropWithRatio, onBrowse }: RatioDropZonesProps) {
+export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const clickedRatioRef = useRef<{ value: number | null; label: string } | null>(null);
   const ratioInputRef = useRef<HTMLInputElement>(null);
 
@@ -87,28 +85,6 @@ export function RatioDropZones({ onDropWithRatio, onBrowse }: RatioDropZonesProp
           e.target.value = "";
         }}
       />
-      <div className="text-center mt-6">
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="text-[13px] text-primary font-semibold cursor-pointer bg-transparent border-none hover:underline"
-        >
-          or browse files
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files) {
-              const valid = validate(e.target.files);
-              if (valid) onBrowse(valid);
-            }
-            e.target.value = "";
-          }}
-        />
-      </div>
       {error && (
         <p className="mt-3 text-sm text-error font-medium text-center">{error}</p>
       )}

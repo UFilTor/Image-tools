@@ -33,13 +33,13 @@ describe("clamp", () => {
 });
 
 describe("centered", () => {
-  it("centers crop at 80% of display area", () => {
+  it("maximizes crop to fill display area", () => {
     const result = centered(400, 300, 1);
-    const expectedW = 300 * 0.8;
-    expect(result.w).toBeCloseTo(expectedW, 0);
-    expect(result.h).toBeCloseTo(expectedW, 0);
-    expect(result.x).toBeCloseTo((400 - expectedW) / 2, 0);
-    expect(result.y).toBeCloseTo((300 - expectedW) / 2, 0);
+    // With ratio 1:1 and 400x300 display, crop should be 300x300 (limited by height)
+    expect(result.w).toBeCloseTo(300, 0);
+    expect(result.h).toBeCloseTo(300, 0);
+    expect(result.x).toBeCloseTo((400 - 300) / 2, 0);
+    expect(result.y).toBeCloseTo(0, 0);
   });
 
   it("handles wide aspect ratios", () => {
