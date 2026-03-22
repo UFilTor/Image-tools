@@ -3,41 +3,60 @@
 import { LOGO_RECOLOR_PRESETS } from "@/lib/constants";
 
 interface LogoControlsProps {
-  tolerance: number;
-  setTolerance: (v: number) => void;
+  isTransparent: boolean;
+  removeBgEnabled: boolean;
+  setRemoveBgEnabled: (v: boolean) => void;
   recolor: string;
   setRecolor: (v: string) => void;
   customHex: string;
   setCustomHex: (v: string) => void;
-  onUpdate: (tolerance: number, recolor: string, customHex: string) => void;
+  onUpdate: (removeBgEnabled: boolean, recolor: string, customHex: string) => void;
 }
 
 export function LogoControls({
-  tolerance, setTolerance, recolor, setRecolor, customHex, setCustomHex, onUpdate,
+  isTransparent, removeBgEnabled, setRemoveBgEnabled, recolor, setRecolor, customHex, setCustomHex, onUpdate,
 }: LogoControlsProps) {
   return (
     <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-5">
-      {/* Tolerance slider */}
+      {/* Background removal section */}
       <div>
-        <div className="flex justify-between items-center mb-2.5">
-          <span className="text-[13px] font-semibold text-text">Background removal</span>
-          <span className="text-xs text-text-muted tabular-nums font-medium">{tolerance}</span>
-        </div>
-        <input
-          type="range"
-          min="5"
-          max="120"
-          step="1"
-          value={tolerance}
-          onChange={(e) => setTolerance(+e.target.value)}
-          onMouseUp={() => onUpdate(tolerance, recolor, customHex)}
-          onTouchEnd={() => onUpdate(tolerance, recolor, customHex)}
-          className="w-full accent-primary cursor-pointer"
-        />
-        <div className="flex justify-between text-[10px] text-text-dim mt-1">
-          <span>Less removal</span>
-          <span>More removal</span>
-        </div>
+        <div className="text-[13px] font-semibold text-text mb-2.5">Background removal</div>
+        {isTransparent ? (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#e8f5e9] text-[#2e7d32] text-[13px] font-medium">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.94 10.56 4.4 8.02l.94-.94 1.6 1.6 3.72-3.72.94.94-4.66 4.66Z" fill="currentColor"/>
+            </svg>
+            Transparent background detected
+          </div>
+        ) : (
+          <button
+            onClick={() => {
+              const next = !removeBgEnabled;
+              setRemoveBgEnabled(next);
+              onUpdate(next, recolor, customHex);
+            }}
+            className="flex items-center gap-0 rounded-lg overflow-hidden border border-border text-[13px] font-semibold"
+          >
+            <span
+              className={`px-4 py-2 transition-all duration-150 ${
+                removeBgEnabled
+                  ? "bg-primary text-white"
+                  : "bg-transparent text-text-muted"
+              }`}
+            >
+              On
+            </span>
+            <span
+              className={`px-4 py-2 transition-all duration-150 ${
+                !removeBgEnabled
+                  ? "bg-primary text-white"
+                  : "bg-transparent text-text-muted"
+              }`}
+            >
+              Off
+            </span>
+          </button>
+        )}
       </div>
 
       <div className="h-px bg-border" />
@@ -53,7 +72,7 @@ export function LogoControls({
                 key={opt.key}
                 onClick={() => {
                   setRecolor(opt.key);
-                  onUpdate(tolerance, opt.key, customHex);
+                  onUpdate(removeBgEnabled, opt.key, customHex);
                 }}
                 className={`
                   flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer
@@ -82,7 +101,7 @@ export function LogoControls({
               value={customHex}
               onChange={(e) => {
                 setCustomHex(e.target.value);
-                onUpdate(tolerance, "custom", e.target.value);
+                onUpdate(removeBgEnabled, "custom", e.target.value);
               }}
               className="w-9 h-9 border-2 border-border rounded-lg bg-white cursor-pointer p-0.5"
             />
@@ -92,7 +111,7 @@ export function LogoControls({
               onChange={(e) => {
                 setCustomHex(e.target.value);
                 if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
-                  onUpdate(tolerance, "custom", e.target.value);
+                  onUpdate(removeBgEnabled, "custom", e.target.value);
                 }
               }}
               className="w-[100px] bg-white border border-border rounded-lg text-text text-[13px] font-semibold px-3 py-2 outline-none focus:border-border-focus"

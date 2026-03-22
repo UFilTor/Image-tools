@@ -11,7 +11,8 @@ import { DlIcon } from "@/components/icons";
 
 export default function LogoPage() {
   const {
-    step, src, name, nat, tolerance, setTolerance,
+    step, src, name, nat, isTransparent,
+    removeBgEnabled, setRemoveBgEnabled,
     recolor, setRecolor, customHex, setCustomHex,
     preview, loadLogo, updateLogo, getExportCanvas, reset,
   } = useLogoProcessor();
@@ -105,8 +106,9 @@ export default function LogoPage() {
           {/* Controls */}
           <div className="max-w-[500px] mx-auto mb-6">
             <LogoControls
-              tolerance={tolerance}
-              setTolerance={setTolerance}
+              isTransparent={isTransparent}
+              removeBgEnabled={removeBgEnabled}
+              setRemoveBgEnabled={setRemoveBgEnabled}
               recolor={recolor}
               setRecolor={setRecolor}
               customHex={customHex}
