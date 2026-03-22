@@ -1,5 +1,19 @@
 import { FocalResult } from "./types";
 
+let apiAvailable: boolean | null = null;
+
+async function checkApiAvailable(): Promise<boolean> {
+  if (apiAvailable !== null) return apiAvailable;
+  try {
+    const res = await fetch("/api/detect-focal/health");
+    const data = await res.json();
+    apiAvailable = data.available === true;
+  } catch {
+    apiAvailable = false;
+  }
+  return apiAvailable;
+}
+
 export async function detectFocal(src: string, mime: string): Promise<FocalResult> {
   try {
     const controller = new AbortController();
@@ -21,11 +35,7 @@ export async function detectFocal(src: string, mime: string): Promise<FocalResul
         return retryWithBackoff(src, mime, 3);
       }
       const errMsg = typeof data?.error === "string" ? data.error : data?.error?.message || `API error (HTTP ${res.status})`;
-      return {
-        bbox: null,
-        label: "",
-        error: errMsg,
-      };
+      return { bbox: null, label: "", error: errMsg };
     }
 
     return data;
@@ -58,7 +68,6 @@ export async function detectFocalWithFallback(
       });
       const faces = await detector.detect(img);
       if (faces.length > 0) {
-        // Find bounding box containing all faces
         let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
         for (const face of faces) {
           const box = face.boundingBox;
@@ -67,7 +76,6 @@ export async function detectFocalWithFallback(
           maxX = Math.max(maxX, box.x + box.width);
           maxY = Math.max(maxY, box.y + box.height);
         }
-        // Add 15% padding
         const padX = (maxX - minX) * 0.15;
         const padY = (maxY - minY) * 0.15;
         return {
@@ -81,24 +89,18 @@ export async function detectFocalWithFallback(
         };
       }
     } catch {
-      // FaceDetector failed, continue to API fallback
+      // FaceDetector failed, continue to next fallback
     }
   }
 
-  // Try API
-  const result = await detectFocal(src, mime);
-
-  // If API key not configured, return null bbox (triggers center crop) without error
-  if (result.error && (
-    result.error.includes("ANTHROPIC_API_KEY not configured") ||
-    result.error.includes("API error (HTTP 500)") ||
-    result.error.includes("Failed to fetch") ||
-    result.error.includes("NetworkError")
-  )) {
-    return { bbox: null, label: "Center crop", error: undefined };
+  // Check if API key is configured before even trying
+  const hasApi = await checkApiAvailable();
+  if (!hasApi) {
+    return { bbox: null, label: "Center crop" };
   }
 
-  return result;
+  // Try API
+  return detectFocal(src, mime);
 }
 
 async function retryWithBackoff(
