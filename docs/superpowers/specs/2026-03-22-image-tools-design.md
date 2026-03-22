@@ -20,6 +20,8 @@ Internal tool for the Understory team. Three image processing modes: Single Crop
 | Testing | Vitest — unit tests on `lib/` | Highest ROI: crop math, image utils, logo processing are where bugs hide |
 | API key | Server-side env var + Next.js API route | Zero config for users. `ANTHROPIC_API_KEY` in `.env.local`, proxied via `/api/detect-focal` |
 | Zip library | JSZip via npm | Replaces CDN script injection from artifact |
+| Repository | GitHub | Source control, triggers Vercel deploys on push |
+| Hosting | Vercel | Matches existing Understory tooling (fee-calculator). `ANTHROPIC_API_KEY` set in Vercel env vars |
 
 ## Routes
 
