@@ -137,7 +137,7 @@ describe("hasTransparency", () => {
 });
 
 describe("removeBg (improved)", () => {
-  it("preserves enclosed areas that match background color", () => {
+  it("removes background-matching pixels everywhere including enclosed areas", () => {
     // Create a 100x100 white canvas
     const cv = createTestCanvas(100, 100);
     fillCanvasPixels(cv, 255, 255, 255, 255);
@@ -152,9 +152,14 @@ describe("removeBg (improved)", () => {
     // Corner pixel (outer background) should be transparent
     expect(data[3]).toBe(0);
 
-    // Inner white pixel at (50, 50) should be PRESERVED (opaque)
+    // Inner white pixel at (50, 50) should ALSO be transparent
+    // (background-matching pixels inside letters are removed so recolor doesn't fill them)
     const innerIdx = (50 * 100 + 50) * 4;
-    expect(data[innerIdx + 3]).toBeGreaterThan(0);
+    expect(data[innerIdx + 3]).toBe(0);
+
+    // Dark border pixel should be preserved (opaque)
+    const borderIdx = (30 * 100 + 30) * 4;
+    expect(data[borderIdx + 3]).toBeGreaterThan(0);
   });
 });
 

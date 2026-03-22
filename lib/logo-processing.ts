@@ -83,9 +83,18 @@ export function removeBg(canvas: HTMLCanvasElement, tolerance: number): HTMLCanv
     }
   }
 
-  // Pass 2: Apply removal only to marked pixels
+  // Pass 2: Apply removal to marked outer pixels
   for (let i = 0; i < w * h; i++) {
     if (toRemove[i]) {
+      px[i * 4 + 3] = 0;
+    }
+  }
+
+  // Pass 3: Also remove interior pixels that match the background color
+  // (e.g., white areas inside letter shapes like o, b, p, a)
+  // These aren't connected to the edges but should still be transparent
+  for (let i = 0; i < w * h; i++) {
+    if (!toRemove[i] && px[i * 4 + 3] > 0 && matchBg(i * 4)) {
       px[i * 4 + 3] = 0;
     }
   }
