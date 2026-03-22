@@ -16,6 +16,10 @@ export const SHORTCUT_MAP = {
   ratios: [0, 1, 2, 3] as const, // indices into RATIOS
 };
 
+export const STORAGE_KEYS = {
+  lastRatio: "image-tools:last-ratio",
+} as const;
+
 export const LOGO_RECOLOR_PRESETS = [
   { key: "none", label: "Original colors", swatch: null },
   { key: "#ffffff", label: "White", swatch: "#ffffff" },
