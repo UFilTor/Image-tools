@@ -26,6 +26,24 @@ const config: Config = {
       fontFamily: {
         sans: ["Inter", "Arial", "sans-serif"],
       },
+      animation: {
+        fadeUp: "fadeUp 0.35s ease",
+        spin: "spin 0.7s linear infinite",
+        pulse: "pulse 1.2s ease infinite",
+      },
+      keyframes: {
+        fadeUp: {
+          from: { opacity: "0", transform: "translateY(12px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        spin: {
+          to: { transform: "rotate(360deg)" },
+        },
+        pulse: {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.4" },
+        },
+      },
     },
   },
   plugins: [],
