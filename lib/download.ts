@@ -1,4 +1,4 @@
-import { CropRect, NaturalSize, DisplaySize, MultiCropItem } from "./types";
+import { CropRect, NaturalSize, DisplaySize, MultiCropItem, CropQueueItem } from "./types";
 import { cropToBlob, cropFilename } from "./image-utils";
 
 export function dlCrop(
@@ -32,6 +32,34 @@ export async function dlAll(items: MultiCropItem[]): Promise<void> {
     ready.map(async (it) => {
       try {
         const blob = await cropToBlob(it.src, it.natural, it.disp, it.crop!);
+        if (blob) zip.file(cropFilename(it.name), blob);
+      } catch {
+        // skip individual failures
+      }
+    }),
+  );
+
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(zipBlob);
+  const a = document.createElement("a");
+  a.download = "crops.zip";
+  a.href = url;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function dlAllCropQueue(items: CropQueueItem[]): Promise<void> {
+  if (!items.length) return;
+
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+
+  await Promise.all(
+    items.map(async (it) => {
+      try {
+        const blob = await cropToBlob(it.src, it.natural, it.disp, it.crop);
         if (blob) zip.file(cropFilename(it.name), blob);
       } catch {
         // skip individual failures

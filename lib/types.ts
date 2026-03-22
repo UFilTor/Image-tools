@@ -34,6 +34,15 @@ export interface Ratio {
   value: number | null;
 }
 
+export interface CropQueueItem {
+  src: string;
+  name: string;
+  natural: NaturalSize;
+  disp: DisplaySize;
+  crop: CropRect;
+  adjusted: boolean;
+}
+
 export type CropDragType = "move" | "tl" | "tr" | "bl" | "br" | "t" | "b" | "l" | "r";
 
 export interface MultiCropItem {
