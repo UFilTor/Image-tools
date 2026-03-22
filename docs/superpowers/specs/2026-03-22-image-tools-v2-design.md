@@ -68,6 +68,7 @@ Nav tabs become: **Crop** | **Smart Crop** | **Logo**
 - Dropping an image onto a zone sets that ratio AND loads the image, skipping the ratio picker step entirely
 - A general "browse" button below the grid opens the file picker — after selecting, the ratio picker appears as before (fallback flow)
 - Clipboard paste goes through the fallback flow (paste → ratio picker → crop)
+- If multiple files are dropped onto a ratio zone, all are loaded into the batch queue (see improvement 5) with that ratio selected
 
 **Files affected:**
 - `app/crop/page.tsx` — new upload layout with ratio drop zones
@@ -85,6 +86,7 @@ Nav tabs become: **Crop** | **Smart Crop** | **Logo**
 - Preview size: fixed width of 200px, height determined by the crop aspect ratio
 - Shows exactly what the downloaded file will look like
 - Hidden on viewports narrower than 900px (the editor needs the space)
+- On wide viewports, the editor and preview sit side by side in a flex row. The editor keeps its current size; the preview panel takes the remaining space (max 200px wide)
 - Label above preview: "Preview"
 
 **Implementation:**
@@ -165,7 +167,7 @@ The current flood-fill seeds from all edges and removes any pixel within toleran
 
 The key change: currently the flood-fill removes pixels as it goes. The new version marks first, then removes. This means enclosed areas (inside letters, inside logo shapes) that match the background color are preserved because the flood-fill can't reach them through the logo boundary.
 
-Additionally, add an **edge-strength check**: before the flood-fill crosses from one pixel to the next, check if there's a strong color gradient between them. If the gradient exceeds a threshold, don't cross — this prevents leaking through thin strokes even if both sides are within tolerance of the background color.
+Additionally, add an **edge-strength check**: before the flood-fill crosses from one pixel to the next, check if there's a strong color gradient between them. If the gradient exceeds a threshold (initial value: 60 color distance), don't cross — this prevents leaking through thin strokes even if both sides are within tolerance of the background color. This value may need tuning during implementation.
 
 **Files affected:**
 - `lib/logo-processing.ts` — add `hasTransparency`, rewrite `removeBg` with two-pass + edge-strength check
