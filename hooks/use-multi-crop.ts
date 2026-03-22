@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { MultiCropItem, CropRect } from "@/lib/types";
 import { dispSize } from "@/lib/image-utils";
 import { centeredOnBbox } from "@/lib/crop-math";
-import { detectFocal } from "@/lib/ai-client";
+import { detectFocalWithFallback } from "@/lib/ai-client";
 
 type MultiStep = "upload" | "ratio" | "review" | "recrop";
 
@@ -63,7 +63,7 @@ export function useMultiCrop() {
         });
         continue;
       }
-      const focal = await detectFocal(item.src, item.mime);
+      const focal = await detectFocalWithFallback(item.src, item.mime, item.natural.w, item.natural.h);
       setItems((prev) => {
         const next = [...prev];
         const r = ratioVal ?? next[idx].ratio;
@@ -115,7 +115,7 @@ export function useMultiCrop() {
     });
     (async () => {
       const item = items[idx];
-      const focal = await detectFocal(item.src, item.mime);
+      const focal = await detectFocalWithFallback(item.src, item.mime, item.natural.w, item.natural.h);
       setItems((prev) => {
         const next = [...prev];
         next[idx] = {

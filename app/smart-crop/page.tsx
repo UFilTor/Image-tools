@@ -178,7 +178,7 @@ export default function SmartCropPage() {
           <Badge>{ratioLabel}</Badge>
           {analyzingCount > 0 && (
             <span className="text-xs text-text-muted">
-              Analyzing {analyzingCount} image{analyzingCount !== 1 ? "s" : ""}...
+              Processing {analyzingCount} image{analyzingCount !== 1 ? "s" : ""}...
             </span>
           )}
           <div className="flex-1" />
