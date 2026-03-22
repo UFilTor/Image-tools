@@ -109,11 +109,17 @@ export function LogoControls({
               type="text"
               value={customHex}
               onChange={(e) => {
-                setCustomHex(e.target.value);
-                if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
-                  onUpdate(removeBgEnabled, "custom", e.target.value);
+                let v = e.target.value;
+                // Auto-add # prefix if user types a valid hex without it
+                if (/^[0-9a-fA-F]{6}$/.test(v)) {
+                  v = `#${v}`;
+                }
+                setCustomHex(v);
+                if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+                  onUpdate(removeBgEnabled, "custom", v);
                 }
               }}
+              placeholder="#000000"
               className="w-[100px] bg-white border border-border rounded-lg text-text text-[13px] font-semibold px-3 py-2 outline-none focus:border-border-focus"
             />
             <span
