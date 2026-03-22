@@ -59,7 +59,7 @@ export default function CropPage() {
       {step === "crop" && src && (
         <div className="flex flex-col items-center gap-4 animate-fadeUp">
           <div className="flex items-center gap-2.5 mb-1">
-            <span className="text-lg font-bold tracking-tight">Adjust crop</span>
+            <span className="text-lg font-bold tracking-tight">Edit crop</span>
             <Badge>{ratioLabel}</Badge>
             {isMulti && (
               <span className="text-sm text-text-muted font-medium">

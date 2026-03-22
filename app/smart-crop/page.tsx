@@ -98,15 +98,19 @@ export default function SmartCropPage() {
           <div className="flex items-center gap-2.5 mb-1">
             <span className="text-lg font-bold tracking-tight">Edit crop</span>
             <Badge>{ratioLabel}</Badge>
-            <span className="text-sm text-text-muted">
+            <span className="text-sm text-text-muted font-medium">
               {editIdx + 1} of {items.length}
             </span>
+            <SizeInput
+              cropPx={editCropPx}
+              cropPy={editCropPy}
+              ratio={ratio}
+              crop={editCrop}
+              setCrop={setEditCrop}
+              disp={editItem.disp}
+              nat={editItem.natural}
+            />
           </div>
-          {editItem.focal?.label && (
-            <p className="text-xs text-text-muted -mt-2">
-              Focal: {editItem.focal.label}
-            </p>
-          )}
           <ZoomableEditor
             src={editItem.src}
             disp={editItem.disp}
@@ -145,15 +149,6 @@ export default function SmartCropPage() {
             </div>
           )}
           <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
-            <SizeInput
-              cropPx={editCropPx}
-              cropPy={editCropPy}
-              ratio={ratio}
-              crop={editCrop}
-              setCrop={setEditCrop}
-              disp={editItem.disp}
-              nat={editItem.natural}
-            />
             <Button onClick={saveAndCloseEdit}>Save &amp; back</Button>
             <Button
               variant="primary"
@@ -161,6 +156,11 @@ export default function SmartCropPage() {
             >
               <DlIcon /> Download
             </Button>
+            {items.length > 1 && (
+              <Button variant="primary" onClick={() => dlAll(items)}>
+                <DlIcon /> Download all
+              </Button>
+            )}
           </div>
         </div>
       </div>
