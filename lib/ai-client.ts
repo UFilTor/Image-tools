@@ -17,13 +17,14 @@ export async function detectFocal(src: string, mime: string): Promise<FocalResul
     const data = await res.json();
 
     if (!res.ok) {
-      if (data?.error?.type === "rate_limit_error") {
+      if (data?.error?.type === "rate_limit_error" || data?.type === "rate_limit_error") {
         return retryWithBackoff(src, mime, 3);
       }
+      const errMsg = typeof data?.error === "string" ? data.error : data?.error?.message || `API error (HTTP ${res.status})`;
       return {
         bbox: null,
         label: "",
-        error: data?.error?.message || `API error (HTTP ${res.status})`,
+        error: errMsg,
       };
     }
 
@@ -90,6 +91,7 @@ export async function detectFocalWithFallback(
   // If API key not configured, return null bbox (triggers center crop) without error
   if (result.error && (
     result.error.includes("ANTHROPIC_API_KEY not configured") ||
+    result.error.includes("API error (HTTP 500)") ||
     result.error.includes("Failed to fetch") ||
     result.error.includes("NetworkError")
   )) {
