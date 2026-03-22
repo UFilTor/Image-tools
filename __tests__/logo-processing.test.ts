@@ -25,8 +25,8 @@ function patchCanvas(cv: HTMLCanvasElement): void {
 
   // Also patch drawImage to copy pixel data from source canvas
   const origDrawImage = ctx.drawImage.bind(ctx);
-  ctx.drawImage = (source: any, ...args: any[]): void => {
-    origDrawImage(source, ...args);
+  ctx.drawImage = function(source: any, ...args: any[]): void {
+    origDrawImage.apply(ctx, [source, ...args] as any);
     if (source instanceof HTMLCanvasElement) {
       const srcCtx = source.getContext("2d")!;
       const srcData = srcCtx.getImageData(0, 0, source.width, source.height);
