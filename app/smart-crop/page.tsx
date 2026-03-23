@@ -236,22 +236,16 @@ export default function SmartCropPage() {
                         draggable={false}
                       />
                       {item.crop && item.status === "done" && (
-                        <>
-                          {/* Dim area outside crop */}
-                          <div className="absolute inset-0 bg-black/40 pointer-events-none" />
-                          {/* Clear crop window */}
-                          <div
-                            className="absolute border-2 border-primary/70 pointer-events-none"
-                            style={{
-                              left: `${(item.crop.x / item.disp.dw) * 100}%`,
-                              top: `${(item.crop.y / item.disp.dh) * 100}%`,
-                              width: `${(item.crop.w / item.disp.dw) * 100}%`,
-                              height: `${(item.crop.h / item.disp.dh) * 100}%`,
-                              boxShadow: "0 0 0 9999px rgba(0,0,0,0.4)",
-                              backgroundColor: "transparent",
-                            }}
-                          />
-                        </>
+                        <div
+                          className="absolute border-2 border-primary/70 pointer-events-none"
+                          style={{
+                            left: `${(item.crop.x / item.disp.dw) * 100}%`,
+                            top: `${(item.crop.y / item.disp.dh) * 100}%`,
+                            width: `${(item.crop.w / item.disp.dw) * 100}%`,
+                            height: `${(item.crop.h / item.disp.dh) * 100}%`,
+                            boxShadow: "0 0 0 9999px rgba(0,0,0,0.35)",
+                          }}
+                        />
                       )}
                     </div>
                   );

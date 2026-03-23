@@ -122,10 +122,6 @@ export function LogoControls({
               placeholder="#000000"
               className="w-[100px] bg-white border border-border rounded-lg text-text text-[13px] font-semibold px-3 py-2 outline-none focus:border-border-focus"
             />
-            <span
-              className="w-6 h-6 rounded-md border border-black/10"
-              style={{ background: customHex }}
-            />
           </div>
         )}
       </div>
