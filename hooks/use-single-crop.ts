@@ -135,10 +135,11 @@ export function useSingleCrop() {
   }, [queue.length]);
 
   const goToRatio = useCallback(() => {
+    setPendingImages(queue.map((q) => ({ src: q.src, name: q.name, nat: q.natural })));
     setStep("ratio");
     setZoom(1);
     setPan({ x: 0, y: 0 });
-  }, []);
+  }, [queue]);
 
   const reset = useCallback(() => {
     setQueue([]);
