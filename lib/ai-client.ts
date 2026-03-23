@@ -76,8 +76,8 @@ export async function detectFocalWithFallback(
           maxX = Math.max(maxX, box.x + box.width);
           maxY = Math.max(maxY, box.y + box.height);
         }
-        const padX = (maxX - minX) * 0.15;
-        const padY = (maxY - minY) * 0.15;
+        const padX = (maxX - minX) * 0.3;
+        const padY = (maxY - minY) * 0.3;
         return {
           bbox: {
             x1: Math.max(0, (minX - padX) / imgWidth),

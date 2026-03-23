@@ -50,20 +50,27 @@ export async function POST(req: NextRequest) {
               },
               {
                 type: "text",
-                text: `You are a professional photo editor. Your job is to find a bounding box that contains ALL of the main subjects.
+                text: `You are a professional photo editor cropping images for an experience booking platform (workshops, tours, outdoor activities, events).
 
-Step 1 — Count every person or animal visible in the frame, even partially.
-Step 2 — Draw the smallest box that contains ALL of them, from the topmost head to the bottommost foot of every subject.
-Step 3 — Expand that box by 15% on every side.
+Your goal: find the focal area that captures BOTH the main subjects AND the surrounding environment/activity context. Do NOT zoom in tight on people. Show the scene.
+
+Step 1 - Identify the main action or activity happening in the photo.
+Step 2 - Identify all people involved in that activity.
+Step 3 - Draw a bounding box that includes:
+  a) All people from top of head to feet (with generous headroom above)
+  b) Enough surrounding environment to show WHERE the activity takes place
+Step 4 - Add 25% padding on all sides to ensure nothing gets clipped when cropped to a fixed aspect ratio.
 
 Critical rules:
-- If there are 2 people, BOTH must be inside the box
-- If there are 3 people, ALL 3 must be inside the box
-- Always include full body: top of head to bottom of feet. Never cut at waist, chest, or knees
-- If a body part is cut off by the photo edge, extend the box to the photo edge on that side
+- NEVER cut off heads. Always leave space ABOVE the tallest person's head (at least 10% of image height).
+- Include environmental context: the workshop space, the shooting range, the forest, the water, the kitchen, etc.
+- If people are spread across the image, include ALL of them.
+- Prefer a LARGER box over a tighter one. When in doubt, go wider.
+- If a person is near the edge of the photo, extend the box to that edge.
+- The box should typically cover 60-90% of the image, not a small region.
 
 Return ONLY a raw JSON object, no markdown, no explanation:
-{"x1": <0.0–1.0>, "y1": <0.0–1.0>, "x2": <0.0–1.0>, "y2": <0.0–1.0>, "label": "<short description>"}`,
+{"x1": <0.0-1.0>, "y1": <0.0-1.0>, "x2": <0.0-1.0>, "y2": <0.0-1.0>, "label": "<short description of the scene>"}`,
               },
             ],
           },
