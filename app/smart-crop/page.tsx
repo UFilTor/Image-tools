@@ -221,28 +221,41 @@ export default function SmartCropPage() {
               `}
             >
               {/* Image preview */}
-              <div className="relative aspect-[4/3] overflow-hidden bg-surface-alt">
-                {item.crop && item.status === "done" ? (
-                  <img
-                    src={item.src}
-                    alt={item.name}
-                    className="absolute"
-                    draggable={false}
-                    style={{
-                      width: `${(item.disp.dw / item.crop.w) * 100}%`,
-                      height: `${(item.disp.dh / item.crop.h) * 100}%`,
-                      left: `${-(item.crop.x / item.crop.w) * 100}%`,
-                      top: `${-(item.crop.y / item.crop.h) * 100}%`,
-                    }}
-                  />
-                ) : (
-                  <img
-                    src={item.src}
-                    alt={item.name}
-                    className="w-full h-full object-cover"
-                    draggable={false}
-                  />
-                )}
+              <div className="relative aspect-[4/3] overflow-hidden bg-surface-alt flex items-center justify-center">
+                {(() => {
+                  const imgAR = item.disp.dw / item.disp.dh;
+                  const cardAR = 4 / 3;
+                  const pctW = imgAR > cardAR ? 100 : (imgAR / cardAR) * 100;
+                  const pctH = imgAR > cardAR ? (cardAR / imgAR) * 100 : 100;
+                  return (
+                    <div className="relative" style={{ width: `${pctW}%`, height: `${pctH}%` }}>
+                      <img
+                        src={item.src}
+                        alt={item.name}
+                        className="w-full h-full"
+                        draggable={false}
+                      />
+                      {item.crop && item.status === "done" && (
+                        <>
+                          {/* Dim area outside crop */}
+                          <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+                          {/* Clear crop window */}
+                          <div
+                            className="absolute border-2 border-primary/70 pointer-events-none"
+                            style={{
+                              left: `${(item.crop.x / item.disp.dw) * 100}%`,
+                              top: `${(item.crop.y / item.disp.dh) * 100}%`,
+                              width: `${(item.crop.w / item.disp.dw) * 100}%`,
+                              height: `${(item.crop.h / item.disp.dh) * 100}%`,
+                              boxShadow: "0 0 0 9999px rgba(0,0,0,0.4)",
+                              backgroundColor: "transparent",
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Analyzing overlay */}
                 {(item.status === "analyzing" || item.status === "recalculating") && (
