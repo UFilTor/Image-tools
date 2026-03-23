@@ -6,7 +6,7 @@ import { NavTabs } from "@/components/nav-tabs";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Image Tools — Understory",
+  title: "Image Tools",
   description: "Crop, AI smart crop, and logo processing tools",
   icons: { icon: "/logo.png" },
 };

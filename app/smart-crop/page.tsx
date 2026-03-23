@@ -222,23 +222,25 @@ export default function SmartCropPage() {
             >
               {/* Image preview */}
               <div className="relative aspect-[4/3] overflow-hidden bg-surface-alt">
-                <img
-                  src={item.src}
-                  alt={item.name}
-                  className="w-full h-full object-cover"
-                  draggable={false}
-                />
-
-                {/* Crop overlay visualization */}
-                {item.crop && item.status === "done" && (
-                  <div
-                    className="absolute border-2 border-primary/70 bg-primary/10 rounded-sm pointer-events-none"
+                {item.crop && item.status === "done" ? (
+                  <img
+                    src={item.src}
+                    alt={item.name}
+                    className="absolute"
+                    draggable={false}
                     style={{
-                      left: `${(item.crop.x / item.disp.dw) * 100}%`,
-                      top: `${(item.crop.y / item.disp.dh) * 100}%`,
-                      width: `${(item.crop.w / item.disp.dw) * 100}%`,
-                      height: `${(item.crop.h / item.disp.dh) * 100}%`,
+                      width: `${(item.disp.dw / item.crop.w) * 100}%`,
+                      height: `${(item.disp.dh / item.crop.h) * 100}%`,
+                      left: `${-(item.crop.x / item.crop.w) * 100}%`,
+                      top: `${-(item.crop.y / item.crop.h) * 100}%`,
                     }}
+                  />
+                ) : (
+                  <img
+                    src={item.src}
+                    alt={item.name}
+                    className="w-full h-full object-cover"
+                    draggable={false}
                   />
                 )}
 
