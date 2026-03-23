@@ -82,4 +82,44 @@ describe("centeredOnBbox", () => {
     expect(result.x + result.w).toBeGreaterThanOrEqual(bx2);
     expect(result.y + result.h).toBeGreaterThanOrEqual(by2);
   });
+
+  it("contains off-center bbox with experience ratio", () => {
+    const bbox = { x1: 0.0, y1: 0.0, x2: 0.3, y2: 0.4 };
+    const result = centeredOnBbox(1000, 800, 1.4, bbox);
+    expect(result.x).toBeLessThanOrEqual(bbox.x1 * 1000);
+    expect(result.y).toBeLessThanOrEqual(bbox.y1 * 800);
+    expect(result.x + result.w).toBeGreaterThanOrEqual(bbox.x2 * 1000);
+    expect(result.y + result.h).toBeGreaterThanOrEqual(bbox.y2 * 800);
+  });
+
+  it("focal point shifts crop center while containing bbox", () => {
+    const bbox = { x1: 0.2, y1: 0.2, x2: 0.8, y2: 0.8 };
+    const focalPoint = { x: 0.3, y: 0.3 };
+    const result = centeredOnBbox(1000, 1000, 1, bbox, focalPoint);
+    // Crop must contain bbox
+    expect(result.x).toBeLessThanOrEqual(bbox.x1 * 1000);
+    expect(result.y).toBeLessThanOrEqual(bbox.y1 * 1000);
+    expect(result.x + result.w).toBeGreaterThanOrEqual(bbox.x2 * 1000);
+    expect(result.y + result.h).toBeGreaterThanOrEqual(bbox.y2 * 1000);
+  });
+
+  it("contains large bbox that nearly fills the image", () => {
+    const bbox = { x1: 0.05, y1: 0.1, x2: 0.95, y2: 0.9 };
+    const result = centeredOnBbox(1000, 800, 1.4, bbox);
+    expect(result.x).toBeLessThanOrEqual(bbox.x1 * 1000);
+    expect(result.y).toBeLessThanOrEqual(bbox.y1 * 800);
+    expect(result.x + result.w).toBeGreaterThanOrEqual(bbox.x2 * 1000);
+    expect(result.y + result.h).toBeGreaterThanOrEqual(bbox.y2 * 800);
+    // Ratio maintained
+    expect(result.w / result.h).toBeCloseTo(1.4, 1);
+  });
+
+  it("works without focal point (backward compat)", () => {
+    const bbox = { x1: 0.3, y1: 0.2, x2: 0.7, y2: 0.8 };
+    const withoutFocal = centeredOnBbox(400, 300, 1, bbox);
+    const withUndefined = centeredOnBbox(400, 300, 1, bbox, undefined);
+    const withNull = centeredOnBbox(400, 300, 1, bbox, null);
+    expect(withoutFocal).toEqual(withUndefined);
+    expect(withoutFocal).toEqual(withNull);
+  });
 });

@@ -52,25 +52,25 @@ export async function POST(req: NextRequest) {
                 type: "text",
                 text: `You are a professional photo editor cropping images for an experience booking platform (workshops, tours, outdoor activities, events).
 
-Your goal: find the focal area that captures BOTH the main subjects AND the surrounding environment/activity context. Do NOT zoom in tight on people. Show the scene.
+You must return TWO things:
 
-Step 1 - Identify the main action or activity happening in the photo.
-Step 2 - Identify all people involved in that activity.
-Step 3 - Draw a bounding box that includes:
-  a) All people from top of head to feet (with generous headroom above)
-  b) Enough surrounding environment to show WHERE the activity takes place
-Step 4 - Add 25% padding on all sides to ensure nothing gets clipped when cropped to a fixed aspect ratio.
+1. **subjects_bbox** - A bounding box that contains ALL people and animals in the photo, from the top of the tallest head to the bottom of the lowest feet. This is the "must not cut" zone.
 
-Critical rules:
-- NEVER cut off heads. Always leave space ABOVE the tallest person's head (at least 10% of image height).
-- Include environmental context: the workshop space, the shooting range, the forest, the water, the kitchen, etc.
-- If people are spread across the image, include ALL of them.
-- Prefer a LARGER box over a tighter one. When in doubt, go wider.
-- If a person is near the edge of the photo, extend the box to that edge.
-- The box should typically cover 60-90% of the image, not a small region.
+2. **action_point** - The x,y center of the main activity or action happening in the photo. This is where the crop should be centered.
+
+Rules for subjects_bbox:
+- Include EVERY person and animal, head to toe, with generous padding
+- Always leave at least 15% of image height as headroom above the tallest person
+- If a subject is near the photo edge, extend the box to that edge
+- Include animals (dogs, horses, etc.) fully within the box
+- Prefer a LARGER box. When in doubt, go wider
+
+Rules for action_point:
+- This should be the center of the main activity (where someone is shooting, cooking, crafting, walking, etc.)
+- If no clear action, use the center of the group of people
 
 Return ONLY a raw JSON object, no markdown, no explanation:
-{"x1": <0.0-1.0>, "y1": <0.0-1.0>, "x2": <0.0-1.0>, "y2": <0.0-1.0>, "label": "<short description of the scene>"}`,
+{"subjects_bbox": {"x1": <0-1>, "y1": <0-1>, "x2": <0-1>, "y2": <0-1>}, "action_point": {"x": <0-1>, "y": <0-1>}, "label": "<short scene description>"}`,
               },
             ],
           },
@@ -105,13 +105,24 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
     const p = JSON.parse(jsonStr);
 
+    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+    // Support both new format (subjects_bbox) and old format (x1/y1/x2/y2)
+    const rawBbox = p.subjects_bbox || p;
+    const bbox = {
+      x1: clamp01(+rawBbox.x1 || 0),
+      y1: clamp01(+rawBbox.y1 || 0),
+      x2: clamp01(+rawBbox.x2 || 1),
+      y2: clamp01(+rawBbox.y2 || 1),
+    };
+
+    const focalPoint = p.action_point
+      ? { x: clamp01(+p.action_point.x), y: clamp01(+p.action_point.y) }
+      : undefined;
+
     return NextResponse.json({
-      bbox: {
-        x1: Math.max(0, Math.min(1, +p.x1 || 0)),
-        y1: Math.max(0, Math.min(1, +p.y1 || 0)),
-        x2: Math.max(0, Math.min(1, +p.x2 || 1)),
-        y2: Math.max(0, Math.min(1, +p.y2 || 1)),
-      },
+      bbox,
+      focalPoint,
       label: p.label || "",
     });
   } catch (err) {

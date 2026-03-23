@@ -57,7 +57,7 @@ export function useMultiCrop() {
           const r = ratioVal ?? next[idx].ratio;
           next[idx] = {
             ...next[idx], status: "done", ratio: r,
-            crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, ratioVal, next[idx].focal!.bbox),
+            crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, ratioVal, next[idx].focal!.bbox, next[idx].focal?.focalPoint),
           };
           return next;
         });
@@ -69,7 +69,7 @@ export function useMultiCrop() {
         const r = ratioVal ?? next[idx].ratio;
         next[idx] = {
           ...next[idx], focal, status: focal.error ? "error" : "done", ratio: r,
-          crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, ratioVal, focal.bbox),
+          crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, ratioVal, focal.bbox, focal.focalPoint),
         };
         return next;
       });
@@ -132,7 +132,7 @@ export function useMultiCrop() {
       if (it.focal?.bbox && !it.focal?.error) {
         return {
           ...it, ratio: effR, status: "done" as const,
-          crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, it.focal.bbox),
+          crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, it.focal.bbox, it.focal.focalPoint),
         };
       }
       return { ...it, ratio: effR, status: "analyzing" as const };
@@ -155,7 +155,7 @@ export function useMultiCrop() {
         const next = [...prev];
         next[idx] = {
           ...next[idx], focal, status: focal.error ? "error" : "done",
-          crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, ratio, focal.bbox),
+          crop: centeredOnBbox(next[idx].disp.dw, next[idx].disp.dh, ratio, focal.bbox, focal.focalPoint),
         };
         return next;
       });

@@ -1,4 +1,4 @@
-import { CropRect, BoundingBox } from "./types";
+import { CropRect, BoundingBox, FocalPoint } from "./types";
 
 export function clamp(c: CropRect, dw: number, dh: number, r: number | null): CropRect {
   let { x, y, w, h } = c;
@@ -49,17 +49,22 @@ export function centeredOnBbox(
   dh: number,
   r: number | null,
   bbox: BoundingBox | null,
+  focalPoint?: FocalPoint | null,
 ): CropRect {
   if (!bbox) return centered(dw, dh, r);
+
   const bx1 = bbox.x1 * dw,
     by1 = bbox.y1 * dh,
     bx2 = bbox.x2 * dw,
     by2 = bbox.y2 * dh;
-  const bcx = (bx1 + bx2) / 2,
-    bcy = (by1 + by2) / 2,
-    bw = bx2 - bx1,
+  const bw = bx2 - bx1,
     bh = by2 - by1;
 
+  // Action center: use focal point if provided, otherwise bbox center
+  const acx = focalPoint ? focalPoint.x * dw : (bx1 + bx2) / 2;
+  const acy = focalPoint ? focalPoint.y * dh : (by1 + by2) / 2;
+
+  // 1. Minimum crop size that contains the bbox at the required ratio
   let cw: number;
   let ch: number;
 
@@ -75,13 +80,23 @@ export function centeredOnBbox(
     ch = bh;
   }
 
-  const mhw = Math.min(bcx, dw - bcx),
-    mhh = Math.min(bcy, dh - bcy);
-  const ex = Math.min((mhw * 2) / cw, (mhh * 2) / ch);
-  if (ex > 1) {
-    cw *= ex;
-    ch *= ex;
+  // 2. Expand to fill available image space (show more context)
+  let maxCw = dw;
+  let maxCh = dh;
+  if (r !== null) {
+    if (maxCw / r > maxCh) {
+      maxCw = maxCh * r;
+    } else {
+      maxCh = maxCw / r;
+    }
   }
+  const scale = Math.min(maxCw / cw, maxCh / ch);
+  if (scale > 1) {
+    cw *= scale;
+    ch *= scale;
+  }
+
+  // 3. Clamp to image bounds
   if (cw > dw) {
     cw = dw;
     if (r !== null) ch = cw / r;
@@ -90,15 +105,25 @@ export function centeredOnBbox(
     ch = dh;
     if (r !== null) cw = ch * r;
   }
-  return clamp(
-    {
-      x: Math.round(bcx - cw / 2),
-      y: Math.round(bcy - ch / 2),
-      w: Math.round(cw),
-      h: Math.round(ch),
-    },
-    dw,
-    dh,
-    r,
-  );
+
+  // 4. Position centered on action point
+  let cx = acx - cw / 2;
+  let cy = acy - ch / 2;
+
+  // 5. Shift to guarantee bbox containment
+  if (cx > bx1) cx = bx1;
+  if (cy > by1) cy = by1;
+  if (cx + cw < bx2) cx = bx2 - cw;
+  if (cy + ch < by2) cy = by2 - ch;
+
+  // 6. Clamp position to image bounds
+  cx = Math.max(0, Math.min(cx, dw - cw));
+  cy = Math.max(0, Math.min(cy, dh - ch));
+
+  return {
+    x: Math.round(cx),
+    y: Math.round(cy),
+    w: Math.round(cw),
+    h: Math.round(ch),
+  };
 }

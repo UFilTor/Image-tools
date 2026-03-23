@@ -22,8 +22,14 @@ export interface BoundingBox {
   y2: number;
 }
 
+export interface FocalPoint {
+  x: number;
+  y: number;
+}
+
 export interface FocalResult {
   bbox: BoundingBox | null;
+  focalPoint?: FocalPoint;
   label: string;
   error?: string;
 }
