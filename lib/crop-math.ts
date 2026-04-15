@@ -110,11 +110,18 @@ export function centeredOnBbox(
   let cx = acx - cw / 2;
   let cy = acy - ch / 2;
 
-  // 5. Shift to guarantee bbox containment
-  if (cx > bx1) cx = bx1;
-  if (cy > by1) cy = by1;
-  if (cx + cw < bx2) cx = bx2 - cw;
-  if (cy + ch < by2) cy = by2 - ch;
+  // 5. Shift to guarantee bbox containment (only when crop fits the bbox)
+  // When the bbox is larger than the crop on an axis (portrait image + wide
+  // ratio), skip containment on that axis and stay centered on the action
+  // point. Cutting feet is always better than cutting heads.
+  if (cw >= bw) {
+    if (cx > bx1) cx = bx1;
+    if (cx + cw < bx2) cx = bx2 - cw;
+  }
+  if (ch >= bh) {
+    if (cy > by1) cy = by1;
+    if (cy + ch < by2) cy = by2 - ch;
+  }
 
   // 6. Clamp position to image bounds
   cx = Math.max(0, Math.min(cx, dw - cw));

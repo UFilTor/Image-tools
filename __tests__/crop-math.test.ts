@@ -114,6 +114,25 @@ describe("centeredOnBbox", () => {
     expect(result.w / result.h).toBeCloseTo(1.4, 1);
   });
 
+  it("centers on action point when bbox taller than crop (portrait + wide ratio)", () => {
+    // Portrait image 800x1200, Experience ratio 1.4:1
+    // Full-body bbox is 960px tall but crop can only be 571px tall
+    const bbox = { x1: 0.1, y1: 0.05, x2: 0.9, y2: 0.85 };
+    const focalPoint = { x: 0.5, y: 0.3 }; // face/upper body
+    const result = centeredOnBbox(800, 1200, 1.4, bbox, focalPoint);
+
+    // Ratio maintained
+    expect(result.w / result.h).toBeCloseTo(1.4, 1);
+
+    // Focal point (face at y=360) must be inside the crop
+    const focalY = 0.3 * 1200;
+    expect(result.y).toBeLessThan(focalY);
+    expect(result.y + result.h).toBeGreaterThan(focalY);
+
+    // Crop should be near the top, not pushed to the bottom
+    expect(result.y).toBeLessThan(200);
+  });
+
   it("works without focal point (backward compat)", () => {
     const bbox = { x1: 0.3, y1: 0.2, x2: 0.7, y2: 0.8 };
     const withoutFocal = centeredOnBbox(400, 300, 1, bbox);
