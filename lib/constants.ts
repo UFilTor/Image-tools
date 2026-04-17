@@ -9,7 +9,16 @@ export const RATIOS: Ratio[] = [
 
 export const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
-export const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+export const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/heic", "image/heif"];
+
+const HEIC_EXTENSIONS = [".heic", ".heif"];
+
+/** Check if a file is an accepted type (by MIME or extension for HEIC with empty MIME) */
+export function isAcceptedFile(file: File): boolean {
+  if (ACCEPTED_TYPES.includes(file.type)) return true;
+  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
+  return HEIC_EXTENSIONS.includes(ext);
+}
 
 export const SHORTCUT_MAP = {
   modes: ["crop", "smart-crop", "logo"] as const,

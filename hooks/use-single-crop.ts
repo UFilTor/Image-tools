@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { CropRect, NaturalSize, DisplaySize, CropQueueItem } from "@/lib/types";
 import { dispSize } from "@/lib/image-utils";
 import { centered } from "@/lib/crop-math";
+import { isAcceptedFile } from "@/lib/constants";
 
 type CropStep = "upload" | "ratio" | "crop";
 
@@ -35,7 +36,7 @@ export function useSingleCrop() {
   const current = queue[currentIdx] || null;
 
   const loadImage = useCallback((files: FileList) => {
-    const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    const arr = Array.from(files).filter((f) => isAcceptedFile(f));
     if (!arr.length) return;
 
     const loaded: LoadedImage[] = [];
@@ -59,7 +60,7 @@ export function useSingleCrop() {
   }, []);
 
   const loadWithRatio = useCallback((files: FileList, ratioVal: number | null, rLabel: string) => {
-    const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    const arr = Array.from(files).filter((f) => isAcceptedFile(f));
     if (!arr.length) return;
 
     const items: CropQueueItem[] = [];

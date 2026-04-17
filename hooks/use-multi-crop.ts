@@ -5,6 +5,7 @@ import { MultiCropItem, CropRect } from "@/lib/types";
 import { dispSize } from "@/lib/image-utils";
 import { centeredOnBbox } from "@/lib/crop-math";
 import { detectFocalWithFallback } from "@/lib/ai-client";
+import { isAcceptedFile } from "@/lib/constants";
 
 type MultiStep = "upload" | "ratio" | "review" | "recrop";
 
@@ -19,7 +20,7 @@ export function useMultiCrop() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
 
   const loadImages = useCallback((files: FileList) => {
-    const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    const arr = Array.from(files).filter((f) => isAcceptedFile(f));
     if (!arr.length) return;
     const out: (MultiCropItem | null)[] = new Array(arr.length).fill(null);
     let done = 0;
@@ -90,7 +91,7 @@ export function useMultiCrop() {
   }, [items, runAnalysis]);
 
   const loadAndAnalyzeWithRatio = useCallback((files: FileList, ratioVal: number | null, rLabel: string) => {
-    const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    const arr = Array.from(files).filter((f) => isAcceptedFile(f));
     if (!arr.length) return;
     const out: (MultiCropItem | null)[] = new Array(arr.length).fill(null);
     let done = 0;

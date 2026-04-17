@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { NaturalSize } from "@/lib/types";
 import { removeBg, recolorCanvas, canvasToDataURL, hasTransparency } from "@/lib/logo-processing";
+import { isAcceptedFile } from "@/lib/constants";
 
 type LogoStep = "upload" | "edit";
 
@@ -43,7 +44,7 @@ export function useLogoProcessor() {
   }, []);
 
   const loadLogo = useCallback((files: FileList) => {
-    const f = Array.from(files).find((f) => f.type.startsWith("image/"));
+    const f = Array.from(files).find((f) => isAcceptedFile(f));
     if (!f) return;
     setName(f.name);
     const reader = new FileReader();

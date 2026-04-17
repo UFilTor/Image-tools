@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { ACCEPTED_TYPES, MAX_FILE_SIZE } from "@/lib/constants";
+import { isAcceptedFile, MAX_FILE_SIZE } from "@/lib/constants";
+import { convertHeicFiles, isHeicFile } from "@/lib/heic-convert";
 
 export function useClipboardPaste(onFiles: ((files: FileList) => void) | null) {
   useEffect(() => {
@@ -15,9 +16,9 @@ export function useClipboardPaste(onFiles: ((files: FileList) => void) | null) {
 
       const imageFiles: File[] = [];
       for (const item of Array.from(items)) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
+        if (item.kind === "file") {
           const file = item.getAsFile();
-          if (file && ACCEPTED_TYPES.includes(file.type) && file.size <= MAX_FILE_SIZE) {
+          if (file && isAcceptedFile(file) && file.size <= MAX_FILE_SIZE) {
             imageFiles.push(file);
           }
         }
@@ -25,9 +26,13 @@ export function useClipboardPaste(onFiles: ((files: FileList) => void) | null) {
 
       if (imageFiles.length > 0) {
         e.preventDefault();
-        const dt = new DataTransfer();
-        imageFiles.forEach((f) => dt.items.add(f));
-        onFiles(dt.files);
+        if (imageFiles.some(isHeicFile)) {
+          convertHeicFiles(imageFiles).then(onFiles).catch(() => {});
+        } else {
+          const dt = new DataTransfer();
+          imageFiles.forEach((f) => dt.items.add(f));
+          onFiles(dt.files);
+        }
       }
     };
 
