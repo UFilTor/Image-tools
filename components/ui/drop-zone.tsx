@@ -70,7 +70,7 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
         }}
         onClick={() => !converting && inputRef.current?.click()}
         className={`
-          border-2 border-dashed rounded-2xl py-14 px-12 cursor-pointer
+          border-2 border-dashed rounded-2xl py-[68px] px-12 cursor-pointer
           text-center transition-all duration-200
           ${over ? "border-primary bg-primary-bg" : "border-border bg-surface"}
         `}

@@ -62,7 +62,7 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
       {converting && (
         <div className="text-sm text-text-muted animate-pulse text-center mb-3">Converting HEIC...</div>
       )}
-      <div className="grid grid-cols-2 gap-3 max-w-[480px] mx-auto">
+      <div className="grid grid-cols-2 gap-4 max-w-[662px] mx-auto">
         {RATIOS.map(({ label, sub, value }, idx) => {
           const isOver = overIdx === idx;
           return (
@@ -77,8 +77,8 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
                 processFiles(e.dataTransfer.files, value, label);
               }}
               className={`
-                relative border-2 border-dashed rounded-2xl pt-9 pb-5 px-5 cursor-pointer
-                text-center transition-all duration-200 flex flex-col items-center gap-1.5
+                relative border-2 border-dashed rounded-2xl pt-12 pb-8 px-7 cursor-pointer
+                text-center transition-all duration-200 flex flex-col items-center gap-2
                 hover:border-primary hover:bg-primary-bg
                 ${isOver ? "border-primary bg-primary-bg" : "border-border bg-surface"}
               `}

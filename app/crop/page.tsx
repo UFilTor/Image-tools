@@ -39,7 +39,7 @@ export default function CropPage() {
   return (
     <div className="w-full max-w-[1200px]">
       {step === "upload" && (
-        <div className="max-w-[520px] w-full mx-auto mt-16 animate-fadeUp">
+        <div className="max-w-[662px] w-full mx-auto mt-16 animate-fadeUp">
           <div className="text-center mb-2">
             <h1 className="font-display uppercase font-bold text-[44px] text-primary leading-[0.95] tracking-[-0.005em] mb-2">
               Crop
