@@ -70,7 +70,7 @@ export function ZoomableEditor({
       ref={containerRef}
       onMouseDown={handlePanStart}
       className="relative select-none rounded-xl overflow-hidden border border-border"
-      style={{ width: disp.dw, height: disp.dh, cursor: zoom > 1 ? "grab" : "default" }}
+      style={{ width: disp.dw, height: disp.dh, cursor: zoom > 1 ? "grab" : "default", background: "var(--editor-bg)" }}
     >
       <div style={{
         width: disp.dw,
@@ -83,7 +83,10 @@ export function ZoomableEditor({
       </div>
 
       {zoom > 1 && (
-        <div className="absolute bottom-2.5 right-2.5 z-20 bg-black/60 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm flex items-center gap-2">
+        <div
+          className="absolute bottom-2.5 right-2.5 z-20 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white/85 backdrop-blur-sm flex items-center gap-2"
+          style={{ background: "rgba(2,18,9,0.7)" }}
+        >
           <span>{Math.round(zoom * 100)}%</span>
           <button
             onClick={(e) => { e.stopPropagation(); setZoom(1); setPan({ x: 0, y: 0 }); }}
@@ -94,7 +97,10 @@ export function ZoomableEditor({
         </div>
       )}
       {zoom === 1 && (
-        <div className="absolute bottom-2.5 right-2.5 z-20 bg-black/45 rounded-lg px-2.5 py-1 text-[10px] text-white/70 pointer-events-none">
+        <div
+          className="absolute bottom-2.5 right-2.5 z-20 rounded-lg px-2.5 py-[5px] text-[10px] text-white/85 pointer-events-none"
+          style={{ background: "rgba(2,18,9,0.7)" }}
+        >
           Scroll to zoom · Alt+drag to pan
         </div>
       )}

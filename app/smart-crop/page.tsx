@@ -48,9 +48,11 @@ export default function SmartCropPage() {
     return (
       <div className="w-full max-w-[1200px]">
         <div className="max-w-[520px] w-full mx-auto mt-16 animate-fadeUp">
-          <div className="text-center mb-8">
-            <h1 className="text-[28px] font-bold mb-2 tracking-tight">Smart Crop</h1>
-            <p className="text-[15px] text-text-muted leading-relaxed">
+          <div className="text-center mb-2">
+            <h1 className="font-display uppercase font-bold text-[44px] text-primary leading-[0.95] tracking-[-0.005em] mb-2">
+              Smart Crop
+            </h1>
+            <p className="text-[15px] text-text-secondary leading-[1.5]">
               Pick a ratio and drop images to start.
             </p>
           </div>
@@ -95,10 +97,10 @@ export default function SmartCropPage() {
     return (
       <div className="w-full max-w-[1200px]">
         <div className="flex flex-col items-center gap-4 animate-fadeUp">
-          <div className="flex items-center gap-2.5 mb-1">
-            <span className="text-lg font-bold tracking-tight">Edit crop</span>
+          <div className="flex items-center gap-2.5 mb-1 flex-wrap justify-center">
+            <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Edit crop</span>
             <Badge>{ratioLabel}</Badge>
-            <span className="text-sm text-text-muted font-medium">
+            <span className="text-[13px] text-text-muted font-medium tabular-nums">
               {editIdx + 1} of {items.length}
             </span>
             <SizeInput
@@ -172,8 +174,8 @@ export default function SmartCropPage() {
     <div className="w-full max-w-[1200px]">
       <div className="animate-fadeUp">
         {/* Header bar */}
-        <div className="flex items-center gap-3 flex-wrap mb-4">
-          <span className="text-lg font-bold tracking-tight">Results</span>
+        <div className="flex items-center gap-3 flex-wrap mb-3">
+          <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Results</span>
           <Badge>{ratioLabel}</Badge>
           {analyzingCount > 0 && (
             <span className="text-xs text-text-muted">
@@ -216,6 +218,7 @@ export default function SmartCropPage() {
               onDragEnd={() => { setDragIdx(null); setDragOver(null); }}
               className={`
                 bg-surface border rounded-xl overflow-hidden transition-all duration-150
+                hover:border-border-hover
                 ${dragOver === idx ? "border-primary ring-2 ring-primary/20" : "border-border"}
                 ${dragIdx === idx ? "opacity-50" : ""}
               `}
@@ -237,13 +240,13 @@ export default function SmartCropPage() {
                       />
                       {item.crop && item.status === "done" && (
                         <div
-                          className="absolute border-2 border-primary/70 pointer-events-none"
+                          className="absolute border-2 border-accent pointer-events-none"
                           style={{
                             left: `${(item.crop.x / item.disp.dw) * 100}%`,
                             top: `${(item.crop.y / item.disp.dh) * 100}%`,
                             width: `${(item.crop.w / item.disp.dw) * 100}%`,
                             height: `${(item.crop.h / item.disp.dh) * 100}%`,
-                            boxShadow: "0 0 0 9999px rgba(0,0,0,0.35)",
+                            boxShadow: "0 0 0 9999px var(--crop-dim-soft)",
                           }}
                         />
                       )}
@@ -253,15 +256,24 @@ export default function SmartCropPage() {
 
                 {/* Analyzing overlay */}
                 {(item.status === "analyzing" || item.status === "recalculating") && (
-                  <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
-                    <div className="w-8 h-8 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div
+                    className="absolute inset-0 backdrop-blur-[2px] flex items-center justify-center"
+                    style={{ background: "rgba(2,18,9,0.42)" }}
+                  >
+                    <div
+                      className="w-[30px] h-[30px] rounded-full animate-spin"
+                      style={{ border: "3px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }}
+                    />
                   </div>
                 )}
 
                 {/* Error overlay */}
                 {item.status === "error" && (
-                  <div className="absolute inset-0 bg-red-900/40 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2">
-                    <span className="text-xs text-white font-semibold">Analysis failed</span>
+                  <div
+                    className="absolute inset-0 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2"
+                    style={{ background: "rgba(56,12,15,0.55)" }}
+                  >
+                    <span className="text-[11px] text-white font-bold uppercase tracking-[0.06em]">Analysis failed</span>
                     <Button size="sm" variant="danger" onClick={() => retryItem(idx)}>
                       <RetryIcon /> Retry
                     </Button>
@@ -269,7 +281,10 @@ export default function SmartCropPage() {
                 )}
 
                 {/* Drag handle */}
-                <div className="absolute top-2 left-2 z-10 bg-black/50 rounded-md p-1.5 text-white/80 cursor-grab active:cursor-grabbing">
+                <div
+                  className="absolute top-2 left-2 z-10 rounded-md p-1.5 text-white/85 cursor-grab active:cursor-grabbing backdrop-blur-[4px]"
+                  style={{ background: "rgba(2,18,9,0.5)" }}
+                >
                   <GripIcon />
                 </div>
               </div>

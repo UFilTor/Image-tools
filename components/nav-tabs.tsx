@@ -22,9 +22,11 @@ export function NavTabs() {
             key={href}
             href={href}
             className={`
-              px-5 py-2 rounded-[10px] border-none text-[13px] font-semibold
+              px-[18px] py-2 rounded-[9px] text-[13px] font-semibold tracking-[0.01em]
               transition-all duration-200 no-underline flex items-center gap-2
-              ${active ? "bg-primary text-white" : "bg-transparent text-text-muted hover:text-text"}
+              ${active
+                ? "bg-primary text-accent"
+                : "bg-transparent text-text-muted hover:text-primary"}
             `}
           >
             {label}

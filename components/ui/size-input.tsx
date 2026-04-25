@@ -64,10 +64,10 @@ export function SizeInput({ cropPx, cropPy, ratio, crop, setCrop, disp, nat }: S
   };
 
   const inputClass =
-    "w-[62px] bg-white border border-border rounded-md text-text text-xs font-medium px-2 py-1.5 text-center tabular-nums outline-none focus:border-border-focus transition-colors";
+    "w-[62px] bg-surface border border-border rounded-md text-text text-xs font-medium px-2 py-1.5 text-center tabular-nums outline-none focus:border-border-focus transition-colors";
 
   return (
-    <div className="flex items-center gap-1 bg-surface border border-border rounded-lg px-1 py-0.5">
+    <div className="inline-flex items-center gap-1 bg-surface border border-border rounded-button px-1.5 py-[3px]">
       <input
         type="text"
         inputMode="numeric"
@@ -95,7 +95,7 @@ export function SizeInput({ cropPx, cropPy, ratio, crop, setCrop, disp, nat }: S
         }}
         className={inputClass}
       />
-      <span className="text-text-dim text-[10px] font-medium ml-0.5 mr-0.5">px</span>
+      <span className="text-text-dim text-[10px] font-medium pr-1">px</span>
     </div>
   );
 }

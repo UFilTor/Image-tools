@@ -13,13 +13,13 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-primary text-white border-transparent hover:bg-primary-hover",
+    "bg-primary text-accent border-primary hover:bg-primary-hover hover:border-primary-hover",
   outline:
     "bg-surface text-text border-border hover:bg-surface-hover hover:border-border-hover",
   ghost:
     "bg-transparent text-text-secondary border-border hover:bg-surface-hover hover:border-border-hover",
   danger:
-    "bg-error-bg text-error border-[#f5d5d5] hover:border-[#f5c0c0]",
+    "bg-error-bg text-error border-error-border hover:border-error",
 };
 
 export function Button({
@@ -29,13 +29,16 @@ export function Button({
   children,
   ...props
 }: ButtonProps) {
-  const sizeClasses = size === "sm" ? "px-3.5 py-1.5 text-xs" : "px-5 py-2.5 text-[13px]";
+  const sizeClasses =
+    size === "sm"
+      ? "px-[13px] py-[7px] text-xs rounded-lg"
+      : "px-[18px] py-2.5 text-[13px] rounded-button";
 
   return (
     <button
       className={`
-        inline-flex items-center gap-1.5 rounded-lg font-semibold
-        border-[1.5px] transition-all duration-150 tracking-[0.01em]
+        inline-flex items-center gap-1.5 font-semibold tracking-[0.01em] leading-none
+        border-[1.5px] transition-all duration-150
         disabled:opacity-40 disabled:cursor-not-allowed
         ${sizeClasses} ${variantClasses[variant]} ${className}
       `}

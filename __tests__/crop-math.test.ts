@@ -114,23 +114,45 @@ describe("centeredOnBbox", () => {
     expect(result.w / result.h).toBeCloseTo(1.4, 1);
   });
 
-  it("anchors to bbox top when bbox taller than crop (portrait + wide ratio)", () => {
+  it("centers on focal point when bbox is taller than crop", () => {
     // Portrait image 800x1200, Experience ratio 1.4:1
-    // Full-body bbox is 960px tall but crop can only be 571px tall
+    // Full-body bbox is 960px tall but crop can only be 571px tall.
+    // When AI provides a focal point, crop should center on it (not snap to top).
     const bbox = { x1: 0.1, y1: 0.05, x2: 0.9, y2: 0.85 };
-    const focalPoint = { x: 0.5, y: 0.5 }; // action at chest level
+    const focalPoint = { x: 0.5, y: 0.3 }; // face / upper torso
     const result = centeredOnBbox(800, 1200, 1.4, bbox, focalPoint);
 
-    // Ratio maintained
     expect(result.w / result.h).toBeCloseTo(1.4, 1);
 
-    // Crop top should align with bbox top (head visible, not pushed down)
+    // Focal point sits roughly at the vertical center of the crop
+    const acy = focalPoint.y * 1200;
+    const cropCenterY = result.y + result.h / 2;
+    expect(Math.abs(cropCenterY - acy)).toBeLessThan(2);
+  });
+
+  it("anchors to bbox top when bbox is tall and no focal point provided", () => {
+    // FaceDetector / no-AI fallback: no focal point, tall bbox.
+    // Should anchor to bbox top so heads/faces stay visible.
+    const bbox = { x1: 0.1, y1: 0.05, x2: 0.9, y2: 0.85 };
+    const result = centeredOnBbox(800, 1200, 1.4, bbox);
+
     const bboxTopPx = 0.05 * 1200;
     expect(result.y).toBe(Math.round(bboxTopPx));
+  });
 
-    // Head/face area must be in the crop
-    expect(result.y).toBeLessThanOrEqual(bboxTopPx);
-    expect(result.y + result.h).toBeGreaterThan(bboxTopPx);
+  it("centers on action point when action is below the head", () => {
+    // Painting workshop scenario: tall person bbox, but the action_point
+    // (canvas/hands) sits well below the head. The crop should follow
+    // the action, not anchor to the head.
+    const bbox = { x1: 0.1, y1: 0.05, x2: 0.9, y2: 0.95 };
+    const focalPoint = { x: 0.5, y: 0.65 };
+    const result = centeredOnBbox(800, 1200, 1.4, bbox, focalPoint);
+
+    const acy = focalPoint.y * 1200;
+    expect(result.y).toBeLessThanOrEqual(acy);
+    expect(result.y + result.h).toBeGreaterThanOrEqual(acy);
+    // It should not have snapped to the bbox top (which would put action below the crop)
+    expect(result.y).toBeGreaterThan(bbox.y1 * 1200);
   });
 
   it("works without focal point (backward compat)", () => {

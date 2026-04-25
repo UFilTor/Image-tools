@@ -118,9 +118,11 @@ export function centeredOnBbox(
   if (ch >= bh) {
     if (cy > by1) cy = by1;
     if (cy + ch < by2) cy = by2 - ch;
-  } else {
-    // Bbox taller than crop (portrait image + wide ratio): anchor to bbox
-    // top so heads/faces are always visible. Feet get cropped, not heads.
+  } else if (!focalPoint) {
+    // Bbox taller than crop and we have no focal point to center on
+    // (FaceDetector path or AI returned no action_point): anchor to bbox
+    // top so heads stay visible. With a focal point, the centered cy from
+    // step 4 is already what we want.
     cy = by1;
   }
 

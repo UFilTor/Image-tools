@@ -1,3 +1,46 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  /* Surfaces */
+  --bg: #F8F6ED;
+  --surface: #FEFDFB;
+  --surface-alt: #EDE8D0;
+  --surface-hover: #EFEBDA;
+
+  /* Brand */
+  --primary: #022C12;
+  --primary-hover: #04391A;
+  --primary-muted: #3A6B4A;
+  --primary-bg: #ECEFE0;
+  --primary-bg-hover: #DEE5CC;
+  --lichen: #D5DFCA;
+  --accent: #F0F97E;
+
+  /* Text */
+  --text: #17181A;
+  --text-secondary: #3A4A3F;
+  --text-muted: #99968A;
+  --text-dim: #B9B6A8;
+
+  /* Borders (alpha-on-cream) */
+  --border: rgba(2, 44, 18, 0.12);
+  --border-hover: rgba(2, 44, 18, 0.28);
+  --border-focus: #022C12;
+
+  /* Editor */
+  --editor-bg: #D8D4C5;
+  --crop-dim: rgba(2, 18, 9, 0.55);
+  --crop-dim-soft: rgba(2, 18, 9, 0.40);
+
+  /* Status */
+  --error: #7E0C04;
+  --error-bg: #F7E6E3;
+  --error-border: #F0D2CC;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--primary);
+}

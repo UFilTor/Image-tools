@@ -40,9 +40,11 @@ export default function CropPage() {
     <div className="w-full max-w-[1200px]">
       {step === "upload" && (
         <div className="max-w-[520px] w-full mx-auto mt-16 animate-fadeUp">
-          <div className="text-center mb-8">
-            <h1 className="text-[28px] font-bold mb-2 tracking-tight">Crop</h1>
-            <p className="text-[15px] text-text-muted leading-relaxed">
+          <div className="text-center mb-2">
+            <h1 className="font-display uppercase font-bold text-[44px] text-primary leading-[0.95] tracking-[-0.005em] mb-2">
+              Crop
+            </h1>
+            <p className="text-[15px] text-text-secondary leading-[1.5]">
               Drop images onto a ratio to start cropping.
             </p>
           </div>
@@ -58,11 +60,11 @@ export default function CropPage() {
 
       {step === "crop" && src && (
         <div className="flex flex-col items-center gap-4 animate-fadeUp">
-          <div className="flex items-center gap-2.5 mb-1">
-            <span className="text-lg font-bold tracking-tight">Edit crop</span>
+          <div className="flex items-center gap-2.5 mb-1 flex-wrap justify-center">
+            <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Edit crop</span>
             <Badge>{ratioLabel}</Badge>
             {isMulti && (
-              <span className="text-sm text-text-muted font-medium">
+              <span className="text-[13px] text-text-muted font-medium tabular-nums">
                 {currentIdx + 1} of {queue.length}
               </span>
             )}

@@ -8,32 +8,53 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        surface: { DEFAULT: "#F5F6F4", alt: "#EDEEED", hover: "#E6E8E5" },
-        border: { DEFAULT: "#D9DDD8", hover: "#B8BFB5", focus: "#022C12" },
-        text: { DEFAULT: "#1A1A1A", secondary: "#4D4D4D", muted: "#8A8A8A", dim: "#B5B5B5" },
-        primary: {
-          DEFAULT: "#022C12",
-          hover: "#04391A",
-          muted: "#3A6B4A",
-          bg: "#EAF3EC",
-          "bg-hover": "#D7EADC",
-          badge: "#022C12",
-          "badge-bg": "#E0F0E4",
+        bg: "var(--bg)",
+        surface: {
+          DEFAULT: "var(--surface)",
+          alt: "var(--surface-alt)",
+          hover: "var(--surface-hover)",
         },
-        accent: "#F1F97E",
-        error: { DEFAULT: "#C62828", bg: "#FFF0EF" },
+        border: {
+          DEFAULT: "var(--border)",
+          hover: "var(--border-hover)",
+          focus: "var(--border-focus)",
+        },
+        text: {
+          DEFAULT: "var(--text)",
+          secondary: "var(--text-secondary)",
+          muted: "var(--text-muted)",
+          dim: "var(--text-dim)",
+        },
+        primary: {
+          DEFAULT: "var(--primary)",
+          hover: "var(--primary-hover)",
+          muted: "var(--primary-muted)",
+          bg: "var(--primary-bg)",
+          "bg-hover": "var(--primary-bg-hover)",
+        },
+        accent: "var(--accent)",
+        lichen: "var(--lichen)",
+        error: {
+          DEFAULT: "var(--error)",
+          bg: "var(--error-bg)",
+          border: "var(--error-border)",
+        },
       },
       fontFamily: {
-        sans: ["Inter", "Arial", "sans-serif"],
+        sans: ["var(--font-body)", "Inter", "Helvetica", "Arial", "sans-serif"],
+        display: ["var(--font-display)", "Oswald", "Impact", "sans-serif"],
+      },
+      borderRadius: {
+        button: "10px",
       },
       animation: {
         fadeUp: "fadeUp 0.35s ease",
-        spin: "spin 0.7s linear infinite",
+        spin: "spin 0.8s linear infinite",
         pulse: "pulse 1.2s ease infinite",
       },
       keyframes: {
         fadeUp: {
-          from: { opacity: "0", transform: "translateY(12px)" },
+          from: { opacity: "0", transform: "translateY(10px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
         spin: {

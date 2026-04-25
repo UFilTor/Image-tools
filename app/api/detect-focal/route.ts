@@ -56,7 +56,7 @@ You must return TWO things:
 
 1. **subjects_bbox** - A bounding box that contains ALL people and animals in the photo, from the top of the tallest head to the bottom of the lowest feet. This is the "must not cut" zone.
 
-2. **action_point** - The x,y center of the main activity or action happening in the photo. This is where the crop should be centered.
+2. **action_point** - The x,y point where the crop should be visually anchored. This is where the crop centers.
 
 Rules for subjects_bbox:
 - Include EVERY person and animal, head to toe, with generous padding
@@ -65,9 +65,11 @@ Rules for subjects_bbox:
 - Include animals (dogs, horses, etc.) fully within the box
 - Prefer a LARGER box. When in doubt, go wider
 
-Rules for action_point:
-- This should be the center of the main activity (where someone is shooting, cooking, crafting, walking, etc.)
-- If no clear action, use the center of the group of people
+Rules for action_point (in priority order):
+1. If one or two subjects dominate the frame and a face is clearly visible, place action_point on the face (or midway between two faces). Faces beat hands and tools.
+2. If multiple faces are visible in a group, use the center of the group of faces.
+3. If no face is visible (subject from behind, in shadow, masked), use the center of what the subject is doing (hands, canvas, tool, instrument).
+4. If the shot is a wide environment/scene with no clear subject, use the visual center of the activity area.
 
 Return ONLY a raw JSON object, no markdown, no explanation:
 {"subjects_bbox": {"x1": <0-1>, "y1": <0-1>, "x2": <0-1>, "y2": <0-1>}, "action_point": {"x": <0-1>, "y": <0-1>}, "label": "<short scene description>"}`,
