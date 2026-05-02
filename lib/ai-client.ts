@@ -1,4 +1,5 @@
 import { FocalResult } from "./types";
+import { downscaleForAI } from "./image-utils";
 
 let apiAvailable: boolean | null = null;
 
@@ -16,13 +17,16 @@ async function checkApiAvailable(): Promise<boolean> {
 
 export async function detectFocal(src: string, mime: string): Promise<FocalResult> {
   try {
+    // Downscale before sending — Anthropic's inline-image cap is 5 MB.
+    const { src: downscaled, mime: downscaledMime } = await downscaleForAI(src);
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
 
     const res = await fetch("/api/detect-focal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ src, mime }),
+      body: JSON.stringify({ src: downscaled, mime: downscaledMime }),
       signal: controller.signal,
     });
 

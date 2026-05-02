@@ -3,13 +3,7 @@
 import { useRef, useState, ReactNode } from "react";
 import { isAcceptedFile, MAX_FILE_SIZE } from "@/lib/constants";
 import { convertHeicFiles, isHeicFile } from "@/lib/heic-convert";
-
-function getPasteShortcut(): string {
-  if (typeof navigator !== "undefined" && navigator.platform?.toLowerCase().includes("mac")) {
-    return "Cmd+V";
-  }
-  return "Ctrl+V";
-}
+import { getPasteShortcut } from "@/lib/platform";
 
 interface DropZoneProps {
   onFiles: (files: FileList) => void;
@@ -60,7 +54,9 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
 
   return (
     <div>
-      <div
+      <button
+        type="button"
+        aria-label="Upload image — click to browse, drop to upload, or paste from clipboard"
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
         onDrop={(e) => {
@@ -69,9 +65,12 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
           processFiles(e.dataTransfer.files);
         }}
         onClick={() => !converting && inputRef.current?.click()}
+        disabled={converting}
         className={`
-          border-2 border-dashed rounded-2xl py-[68px] px-12 cursor-pointer
-          text-center transition-all duration-200
+          w-full block border-2 border-dashed rounded-2xl py-[68px] px-12 cursor-pointer
+          text-center transition-[background-color,border-color] duration-200
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg
+          disabled:cursor-not-allowed
           ${over ? "border-primary bg-primary-bg" : "border-border bg-surface"}
         `}
       >
@@ -91,12 +90,12 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
         ) : (
           <>
             {children(over)}
-            <div className="text-[10px] text-text-dim mt-2">
+            <div className="hidden sm:block text-[10px] text-text-muted mt-2">
               or paste with {getPasteShortcut()}
             </div>
           </>
         )}
-      </div>
+      </button>
       {error && (
         <p className="mt-3 text-sm text-error font-medium text-center">{error}</p>
       )}

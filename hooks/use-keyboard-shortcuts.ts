@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { SHORTCUT_MAP } from "@/lib/constants";
 
 interface ShortcutActions {
@@ -15,15 +15,21 @@ interface ShortcutActions {
 
 export function useKeyboardShortcuts(actions: ShortcutActions = {}) {
   const router = useRouter();
-  const pathname = usePathname();
+  const actionsRef = useRef(actions);
+
+  // Mirror latest actions into the ref (no setState, no effect dependency churn).
+  useEffect(() => {
+    actionsRef.current = actions;
+  });
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Skip when input is focused
+      if (e.repeat) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-      // Number keys — mode navigation (disabled when ratio picker is active)
-      if (!actions.disableModeNav) {
+      const a = actionsRef.current;
+
+      if (!a.disableModeNav && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         const num = parseInt(e.key, 10);
         if (num >= 1 && num <= 3) {
           e.preventDefault();
@@ -32,32 +38,32 @@ export function useKeyboardShortcuts(actions: ShortcutActions = {}) {
         }
       }
 
-      if (e.key === "Enter" && actions.onEnter) {
+      if (e.key === "Enter" && a.onEnter) {
         e.preventDefault();
-        actions.onEnter();
+        a.onEnter();
         return;
       }
 
-      if (e.key === "Escape" && actions.onEscape) {
+      if (e.key === "Escape" && a.onEscape) {
         e.preventDefault();
-        actions.onEscape();
+        a.onEscape();
         return;
       }
 
-      if (e.key === "ArrowLeft" && actions.onLeft) {
+      if (e.key === "ArrowLeft" && a.onLeft) {
         e.preventDefault();
-        actions.onLeft();
+        a.onLeft();
         return;
       }
 
-      if (e.key === "ArrowRight" && actions.onRight) {
+      if (e.key === "ArrowRight" && a.onRight) {
         e.preventDefault();
-        actions.onRight();
+        a.onRight();
         return;
       }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [router, pathname, actions]);
+  }, [router]);
 }

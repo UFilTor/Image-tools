@@ -78,7 +78,7 @@ export function ZoomableEditor({
         transform: `scale(${zoom}) translate(${cp.x / zoom}px, ${cp.y / zoom}px)`,
         transformOrigin: "center center",
       }}>
-        <img src={src} draggable={false} className="block pointer-events-none" style={{ width: disp.dw, height: disp.dh }} />
+        <img key={src} src={src} alt="" decoding="async" draggable={false} className="block pointer-events-none animate-fadeIn" style={{ width: disp.dw, height: disp.dh }} />
         <CropOverlay crop={crop} onDown={onDown} />
       </div>
 

@@ -14,13 +14,18 @@ export function removeBg(canvas: HTMLCanvasElement, tolerance: number): HTMLCanv
   const w = canvas.width,
     h = canvas.height;
 
-  // Sample background color from corners
+  // Tiny images can't be reliably analyzed; return as-is.
+  if (w < 8 || h < 8) return canvas;
+
+  // Sample background color from corners. Clamp box to image dimensions.
+  const boxW = Math.min(5, w);
+  const boxH = Math.min(5, h);
   const samples: [number, number, number][] = [];
   for (const [sx, sy] of [
-    [0, 0], [w - 5, 0], [0, h - 5], [w - 5, h - 5],
+    [0, 0], [w - boxW, 0], [0, h - boxH], [w - boxW, h - boxH],
   ] as [number, number][]) {
-    for (let dy = 0; dy < 5; dy++)
-      for (let dx = 0; dx < 5; dx++) {
+    for (let dy = 0; dy < boxH; dy++)
+      for (let dx = 0; dx < boxW; dx++) {
         const i = ((sy + dy) * w + (sx + dx)) * 4;
         samples.push([px[i], px[i + 1], px[i + 2]]);
       }

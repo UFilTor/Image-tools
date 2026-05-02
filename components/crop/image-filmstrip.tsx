@@ -19,7 +19,7 @@ export function ImageFilmstrip({ items, currentIdx, onSelect }: ImageFilmstripPr
           onClick={() => onSelect(idx)}
           className={`
             shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer
-            transition-all duration-150 bg-surface-alt
+            transition-[border-color,box-shadow] duration-150 bg-surface-alt
             ${idx === currentIdx
               ? "border-primary shadow-md"
               : item.adjusted
@@ -30,6 +30,9 @@ export function ImageFilmstrip({ items, currentIdx, onSelect }: ImageFilmstripPr
         >
           <img
             src={item.src}
+            alt=""
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover"
             draggable={false}
           />

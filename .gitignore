@@ -40,3 +40,8 @@ next-env.d.ts
 
 # project
 .superpowers
+
+# QA agent browser artifacts
+/.playwright-cli/
+/qa-reports/
+

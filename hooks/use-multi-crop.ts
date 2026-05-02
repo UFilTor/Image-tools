@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { MultiCropItem, CropRect } from "@/lib/types";
-import { dispSize } from "@/lib/image-utils";
+import { dispSize, readFileAsImage } from "@/lib/image-utils";
 import { centeredOnBbox } from "@/lib/crop-math";
 import { detectFocalWithFallback } from "@/lib/ai-client";
 import { isAcceptedFile } from "@/lib/constants";
@@ -18,42 +18,49 @@ export function useMultiCrop() {
   const [editCrop, setEditCrop] = useState<CropRect | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const analysisGen = useRef(0);
 
-  const loadImages = useCallback((files: FileList) => {
+  const buildItem = (img: { src: string; name: string; nat: { w: number; h: number } }, mime: string, ratioVal: number | null, status: MultiCropItem["status"]): MultiCropItem => {
+    const maxW = Math.min(window.innerWidth - 96, img.nat.w);
+    const maxH = Math.min(window.innerHeight - 230, img.nat.h);
+    return {
+      src: img.src, name: img.name, mime,
+      natural: img.nat,
+      disp: dispSize(img.nat.w, img.nat.h, maxW, maxH),
+      status, focal: null, crop: null,
+      ratio: ratioVal ?? img.nat.w / img.nat.h,
+    };
+  };
+
+  const loadImages = useCallback(async (files: FileList) => {
+    setLoadError(null);
     const arr = Array.from(files).filter((f) => isAcceptedFile(f));
     if (!arr.length) return;
-    const out: (MultiCropItem | null)[] = new Array(arr.length).fill(null);
-    let done = 0;
+    const results = await Promise.all(arr.map(readFileAsImage));
+    const ok: MultiCropItem[] = [];
     arr.forEach((f, i) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const src = e.target?.result as string;
-        const img = new Image();
-        img.onload = () => {
-          const maxW = Math.min(window.innerWidth - 96, img.width);
-          const maxH = Math.min(window.innerHeight - 230, img.height);
-          out[i] = {
-            src, name: f.name, mime: f.type,
-            natural: { w: img.width, h: img.height },
-            disp: dispSize(img.width, img.height, maxW, maxH),
-            status: "pending", focal: null, crop: null, ratio: 1,
-          };
-          if (++done === arr.length) {
-            setItems(out as MultiCropItem[]);
-            setStep("ratio");
-          }
-        };
-        img.src = src;
-      };
-      reader.readAsDataURL(f);
+      const r = results[i];
+      if (r) ok.push(buildItem(r, f.type, 1, "pending"));
     });
+    const failed = arr.length - ok.length;
+    if (!ok.length) {
+      setLoadError(`Couldn't read ${arr.length === 1 ? "that image" : "any of those images"}. Try a different file.`);
+      return;
+    }
+    if (failed > 0) setLoadError(`Skipped ${failed} unreadable file${failed === 1 ? "" : "s"}.`);
+    setItems(ok);
+    setStep("ratio");
   }, []);
 
   const runAnalysis = useCallback(async (currentItems: MultiCropItem[], ratioVal: number | null) => {
+    const myGen = ++analysisGen.current;
     for (let idx = 0; idx < currentItems.length; idx++) {
+      if (myGen !== analysisGen.current) return; // cancelled by newer run
       const item = currentItems[idx];
       if (item.focal?.bbox && !item.focal?.error) {
         setItems((prev) => {
+          if (myGen !== analysisGen.current) return prev;
           const next = [...prev];
           const r = ratioVal ?? next[idx].ratio;
           next[idx] = {
@@ -65,7 +72,9 @@ export function useMultiCrop() {
         continue;
       }
       const focal = await detectFocalWithFallback(item.src, item.mime, item.natural.w, item.natural.h);
+      if (myGen !== analysisGen.current) return;
       setItems((prev) => {
+        if (myGen !== analysisGen.current) return prev;
         const next = [...prev];
         const r = ratioVal ?? next[idx].ratio;
         next[idx] = {
@@ -90,39 +99,29 @@ export function useMultiCrop() {
     runAnalysis(withStatus, ratioVal);
   }, [items, runAnalysis]);
 
-  const loadAndAnalyzeWithRatio = useCallback((files: FileList, ratioVal: number | null, rLabel: string) => {
+  const loadAndAnalyzeWithRatio = useCallback(async (files: FileList, ratioVal: number | null, rLabel: string) => {
+    setLoadError(null);
     const arr = Array.from(files).filter((f) => isAcceptedFile(f));
     if (!arr.length) return;
-    const out: (MultiCropItem | null)[] = new Array(arr.length).fill(null);
-    let done = 0;
+
+    const results = await Promise.all(arr.map(readFileAsImage));
+    const ok: MultiCropItem[] = [];
     arr.forEach((f, i) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const src = e.target?.result as string;
-        const img = new Image();
-        img.onload = () => {
-          const maxW = Math.min(window.innerWidth - 96, img.width);
-          const maxH = Math.min(window.innerHeight - 230, img.height);
-          out[i] = {
-            src, name: f.name, mime: f.type,
-            natural: { w: img.width, h: img.height },
-            disp: dispSize(img.width, img.height, maxW, maxH),
-            status: "analyzing", focal: null, crop: null,
-            ratio: ratioVal ?? img.width / img.height,
-          };
-          if (++done === arr.length) {
-            const loaded = out as MultiCropItem[];
-            setItems(loaded);
-            setRatio(ratioVal);
-            setRatioLabel(rLabel);
-            setStep("review");
-            runAnalysis(loaded, ratioVal);
-          }
-        };
-        img.src = src;
-      };
-      reader.readAsDataURL(f);
+      const r = results[i];
+      if (r) ok.push(buildItem(r, f.type, ratioVal, "analyzing"));
     });
+    const failed = arr.length - ok.length;
+    if (!ok.length) {
+      setLoadError(`Couldn't read ${arr.length === 1 ? "that image" : "any of those images"}. Try a different file.`);
+      return;
+    }
+    if (failed > 0) setLoadError(`Skipped ${failed} unreadable file${failed === 1 ? "" : "s"}.`);
+
+    setItems(ok);
+    setRatio(ratioVal);
+    setRatioLabel(rLabel);
+    setStep("review");
+    runAnalysis(ok, ratioVal);
   }, [runAnalysis]);
 
   const batchRecrop = useCallback((ratioVal: number | null, rLabel: string) => {
@@ -144,15 +143,19 @@ export function useMultiCrop() {
   }, [items, runAnalysis]);
 
   const retryItem = useCallback((idx: number) => {
+    const current = items[idx];
+    if (!current || current.status === "analyzing" || current.status === "recalculating") return;
     setItems((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], status: "analyzing", focal: null };
       return next;
     });
+    const myGen = analysisGen.current;
     (async () => {
-      const item = items[idx];
-      const focal = await detectFocalWithFallback(item.src, item.mime, item.natural.w, item.natural.h);
+      const focal = await detectFocalWithFallback(current.src, current.mime, current.natural.w, current.natural.h);
+      if (myGen !== analysisGen.current) return;
       setItems((prev) => {
+        if (myGen !== analysisGen.current) return prev;
         const next = [...prev];
         next[idx] = {
           ...next[idx], focal, status: focal.error ? "error" : "done",
@@ -211,9 +214,11 @@ export function useMultiCrop() {
   }, [editIdx, editCrop, items]);
 
   const reset = useCallback(() => {
+    analysisGen.current++;
     setItems([]);
     setEditIdx(null);
     setStep("upload");
+    setLoadError(null);
   }, []);
 
   const editItem = editIdx !== null ? items[editIdx] : null;
@@ -229,6 +234,7 @@ export function useMultiCrop() {
     editCropPx, editCropPy,
     zoom, setZoom, pan, setPan,
     doneCount, errCount, analyzingCount,
+    loadError, clearLoadError: () => setLoadError(null),
     loadImages, loadAndAnalyzeWithRatio, startAnalysis, batchRecrop, retryItem,
     reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset,
   };

@@ -33,6 +33,10 @@
   --editor-bg: #D8D4C5;
   --crop-dim: rgba(2, 18, 9, 0.55);
   --crop-dim-soft: rgba(2, 18, 9, 0.40);
+  --overlay-analyzing: rgba(2, 18, 9, 0.42);
+  --overlay-error: rgba(56, 12, 15, 0.55);
+  --overlay-handle: rgba(2, 18, 9, 0.5);
+  --checker-tint: rgba(2, 44, 18, 0.08);
 
   /* Status */
   --error: #7E0C04;
@@ -43,4 +47,15 @@
 ::selection {
   background: var(--accent);
   color: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

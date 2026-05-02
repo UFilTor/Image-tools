@@ -48,7 +48,8 @@ const config: Config = {
         button: "10px",
       },
       animation: {
-        fadeUp: "fadeUp 0.35s ease",
+        fadeUp: "fadeUp 0.42s cubic-bezier(0.22, 1, 0.36, 1)",
+        fadeIn: "fadeIn 0.12s ease-out",
         spin: "spin 0.8s linear infinite",
         pulse: "pulse 1.2s ease infinite",
       },
@@ -56,6 +57,10 @@ const config: Config = {
         fadeUp: {
           from: { opacity: "0", transform: "translateY(10px)" },
           to: { opacity: "1", transform: "translateY(0)" },
+        },
+        fadeIn: {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
         },
         spin: {
           to: { transform: "rotate(360deg)" },

@@ -71,6 +71,7 @@ export function SizeInput({ cropPx, cropPy, ratio, crop, setCrop, disp, nat }: S
       <input
         type="text"
         inputMode="numeric"
+        aria-label="Crop width in pixels"
         value={editW !== null ? editW : cropPx}
         onChange={(e) => setEditW(e.target.value.replace(/[^0-9]/g, ""))}
         onFocus={(e) => { setEditW(String(cropPx)); e.target.select(); }}
@@ -81,10 +82,11 @@ export function SizeInput({ cropPx, cropPy, ratio, crop, setCrop, disp, nat }: S
         }}
         className={inputClass}
       />
-      <span className="text-text-muted text-xs font-semibold">&times;</span>
+      <span className="text-text-muted text-xs font-semibold" aria-hidden="true">×</span>
       <input
         type="text"
         inputMode="numeric"
+        aria-label="Crop height in pixels"
         value={editH !== null ? editH : cropPy}
         onChange={(e) => setEditH(e.target.value.replace(/[^0-9]/g, ""))}
         onFocus={(e) => { setEditH(String(cropPy)); e.target.select(); }}

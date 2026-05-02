@@ -31,15 +31,16 @@ export function Button({
 }: ButtonProps) {
   const sizeClasses =
     size === "sm"
-      ? "px-[13px] py-[7px] text-xs rounded-lg"
-      : "px-[18px] py-2.5 text-[13px] rounded-button";
+      ? "px-[13px] py-[9px] text-xs rounded-lg"
+      : "px-[18px] py-2.5 text-[13px] rounded-button min-h-11";
 
   return (
     <button
       className={`
         inline-flex items-center gap-1.5 font-semibold tracking-[0.01em] leading-none
-        border-[1.5px] transition-all duration-150
-        disabled:opacity-40 disabled:cursor-not-allowed
+        border-[1.5px] transition-[background-color,border-color,color,opacity] duration-150
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg
+        disabled:opacity-50 disabled:cursor-not-allowed
         ${sizeClasses} ${variantClasses[variant]} ${className}
       `}
       {...props}

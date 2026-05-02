@@ -4,11 +4,13 @@ import { useSingleCrop } from "@/hooks/use-single-crop";
 import { useCropDrag } from "@/hooks/use-crop-drag";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
+import { useConfirm } from "@/hooks/use-confirm";
 import { RatioDropZones } from "@/components/crop/ratio-drop-zones";
 import { RatioPicker } from "@/components/crop/ratio-picker";
 import { ZoomableEditor } from "@/components/crop/zoomable-editor";
 import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
 import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Badge } from "@/components/ui/badge";
 import { SizeInput } from "@/components/ui/size-input";
 import { dlCrop, dlAllCropQueue } from "@/lib/download";
@@ -26,11 +28,13 @@ export default function CropPage() {
   const { startDrag } = useCropDrag();
   useClipboardPaste(step === "upload" ? loadImage : null);
 
+  const resetConfirm = useConfirm({ onConfirm: reset, count: queue.length, threshold: 1 });
+
   useKeyboardShortcuts({
     onEnter: step === "crop" && src ? () => dlCrop(src, nat, disp, crop, cropFilename(name)) : undefined,
     onEscape: step === "crop"
-      ? (isMulti ? reset : goToRatio)
-      : step === "ratio" ? reset : undefined,
+      ? (isMulti ? resetConfirm.fire : goToRatio)
+      : step === "ratio" ? resetConfirm.fire : undefined,
     onLeft: isMulti && step === "crop" ? () => navigateTo(currentIdx - 1) : undefined,
     onRight: isMulti && step === "crop" ? () => navigateTo(currentIdx + 1) : undefined,
     disableModeNav: step === "ratio",
@@ -54,7 +58,12 @@ export default function CropPage() {
 
       {step === "ratio" && (
         <div className="mt-16 mx-auto">
-          <RatioPicker subtitle="Step 1 of 2" onPick={pickRatio} onBack={reset} />
+          <RatioPicker
+            subtitle="Step 1 of 2"
+            onPick={pickRatio}
+            onBack={resetConfirm.fire}
+            backLabel={resetConfirm.armed ? `Press again to clear ${queue.length} image${queue.length === 1 ? "" : "s"}` : "← Go back"}
+          />
         </div>
       )}
 
@@ -77,18 +86,24 @@ export default function CropPage() {
           />
           {isMulti && (
             <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => navigateTo(currentIdx - 1)} disabled={currentIdx === 0}>
-                &larr; Prev
+              <Button size="sm" aria-label="Previous image" onClick={() => navigateTo(currentIdx - 1)} disabled={currentIdx === 0}>
+                ← Prev
               </Button>
               <ImageFilmstrip items={queue} currentIdx={currentIdx} onSelect={navigateTo} />
-              <Button size="sm" onClick={() => navigateTo(currentIdx + 1)} disabled={currentIdx === queue.length - 1}>
-                Next &rarr;
+              <Button size="sm" aria-label="Next image" onClick={() => navigateTo(currentIdx + 1)} disabled={currentIdx === queue.length - 1}>
+                Next →
               </Button>
             </div>
           )}
           <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
             <Button onClick={goToRatio}>Change ratio</Button>
-            <Button onClick={reset}>New images</Button>
+            <ConfirmButton
+              armed={resetConfirm.armed}
+              onFire={resetConfirm.fire}
+              confirmLabel={`Clear ${queue.length} image${queue.length === 1 ? "" : "s"}?`}
+            >
+              New images
+            </ConfirmButton>
             <Button variant="primary" onClick={() => dlCrop(src, nat, disp, crop, cropFilename(name))}>
               <DlIcon /> Download
             </Button>

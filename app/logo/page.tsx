@@ -3,8 +3,10 @@
 import { useLogoProcessor } from "@/hooks/use-logo-processor";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
+import { useConfirm } from "@/hooks/use-confirm";
 import { DropZone } from "@/components/ui/drop-zone";
 import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { LogoControls } from "@/components/logo/logo-controls";
 import { dlCanvas } from "@/lib/download";
 import { DlIcon } from "@/components/icons";
@@ -19,6 +21,8 @@ export default function LogoPage() {
 
   useClipboardPaste(step === "upload" ? loadLogo : null);
 
+  const resetConfirm = useConfirm({ onConfirm: reset, count: src ? 1 : 0, threshold: 1 });
+
   const handleDownload = () => {
     const canvas = getExportCanvas();
     if (canvas) {
@@ -30,7 +34,7 @@ export default function LogoPage() {
 
   useKeyboardShortcuts({
     onEnter: step === "edit" ? handleDownload : undefined,
-    onEscape: step === "edit" ? reset : undefined,
+    onEscape: step === "edit" ? resetConfirm.fire : undefined,
   });
 
   return (
@@ -39,7 +43,7 @@ export default function LogoPage() {
         <div className="max-w-[576px] w-full mx-auto mt-16 animate-fadeUp">
           <div className="text-center mb-2">
             <h1 className="font-display uppercase font-bold text-[44px] text-primary leading-[0.95] tracking-[-0.005em] mb-2">
-              Logo Processor
+              Logo
             </h1>
             <p className="text-[15px] text-text-secondary leading-[1.5]">
               Remove backgrounds and recolor logos instantly.
@@ -58,7 +62,7 @@ export default function LogoPage() {
                 <p className={`text-[15px] font-medium ${over ? "text-primary" : "text-text-secondary"}`}>
                   Drop logo here or <span className="text-primary font-bold">browse</span>
                 </p>
-                <p className="text-xs mt-2 text-text-dim">PNG, JPG, or WebP</p>
+                <p className="text-xs mt-2 text-text-muted">PNG, JPG, WebP, or HEIC</p>
               </>
             )}
           </DropZone>
@@ -69,9 +73,9 @@ export default function LogoPage() {
         <div className="animate-fadeUp">
           <div className="text-center mb-6">
             <h1 className="font-display uppercase font-bold text-[26px] text-primary tracking-[0.02em] leading-none">
-              Logo Processor
+              Logo
             </h1>
-            <p className="text-[13px] text-text-muted mt-1.5">{name} &middot; {nat.w} &times; {nat.h}px</p>
+            <p className="text-[13px] text-text-muted mt-1.5">{name} · {nat.w} × {nat.h}px</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -81,7 +85,9 @@ export default function LogoPage() {
               <div className="border border-border rounded-2xl overflow-hidden bg-surface flex items-center justify-center p-6 aspect-[4/3]">
                 <img
                   src={src}
-                  alt="Original"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
                   className="max-w-full max-h-full object-contain"
                   draggable={false}
                 />
@@ -90,18 +96,30 @@ export default function LogoPage() {
 
             {/* Processed */}
             <div>
-              <p className="text-[11px] font-bold text-text-muted mb-2.5 uppercase tracking-[0.12em]">Processed</p>
+              <div className="flex items-center justify-between mb-2.5">
+                <p className="text-[11px] font-bold text-text-muted uppercase tracking-[0.12em]">Processed</p>
+                <p className="hidden md:block text-[10px] text-text-dim">Hover to compare</p>
+              </div>
               <div
-                className="border border-border rounded-2xl overflow-hidden flex items-center justify-center p-6 aspect-[4/3]"
+                className="group relative border border-border rounded-2xl overflow-hidden flex items-center justify-center p-6 aspect-[4/3]"
                 style={{
                   background:
-                    "repeating-conic-gradient(rgba(2,44,18,0.08) 0% 25%, var(--surface) 0% 50%) 50% / 16px 16px",
+                    "repeating-conic-gradient(var(--checker-tint) 0% 25%, var(--surface) 0% 50%) 50% / 16px 16px",
                 }}
               >
                 <img
                   src={preview}
-                  alt="Processed"
-                  className="max-w-full max-h-full object-contain"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="max-w-full max-h-full object-contain transition-opacity duration-150 md:group-hover:opacity-0"
+                  draggable={false}
+                />
+                <img
+                  src={src}
+                  alt=""
+                  aria-hidden="true"
+                  className="hidden md:block absolute inset-0 m-auto max-w-[calc(100%-3rem)] max-h-[calc(100%-3rem)] object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100 pointer-events-none"
                   draggable={false}
                 />
               </div>
@@ -124,7 +142,13 @@ export default function LogoPage() {
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 justify-center">
-            <Button onClick={reset}>New logo</Button>
+            <ConfirmButton
+              armed={resetConfirm.armed}
+              onFire={resetConfirm.fire}
+              confirmLabel="Clear 1 logo?"
+            >
+              New logo
+            </ConfirmButton>
             <Button variant="primary" onClick={handleDownload}>
               <DlIcon /> Download PNG
             </Button>

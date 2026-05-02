@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { CropRect, NaturalSize, DisplaySize, CropQueueItem } from "@/lib/types";
-import { dispSize } from "@/lib/image-utils";
+import { dispSize, readFileAsImage } from "@/lib/image-utils";
 import { centered } from "@/lib/crop-math";
 import { isAcceptedFile } from "@/lib/constants";
 
@@ -35,66 +35,63 @@ export function useSingleCrop() {
 
   const current = queue[currentIdx] || null;
 
-  const loadImage = useCallback((files: FileList) => {
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadImage = useCallback(async (files: FileList) => {
+    setLoadError(null);
     const arr = Array.from(files).filter((f) => isAcceptedFile(f));
     if (!arr.length) return;
 
-    const loaded: LoadedImage[] = [];
-    let done = 0;
-    arr.forEach((f, i) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        const img = new Image();
-        img.onload = () => {
-          loaded[i] = { src: result, name: f.name, nat: { w: img.width, h: img.height } };
-          if (++done === arr.length) {
-            setPendingImages(loaded);
-            setStep("ratio");
-          }
-        };
-        img.src = result;
-      };
-      reader.readAsDataURL(f);
-    });
+    const results = await Promise.all(arr.map(readFileAsImage));
+    const ok = results.filter((r): r is LoadedImage => r !== null);
+    const failed = arr.length - ok.length;
+
+    if (!ok.length) {
+      setLoadError(`Couldn't read ${arr.length === 1 ? "that image" : "any of those images"}. Try a different file.`);
+      return;
+    }
+    if (failed > 0) {
+      setLoadError(`Skipped ${failed} unreadable file${failed === 1 ? "" : "s"}.`);
+    }
+    setPendingImages(ok);
+    setStep("ratio");
   }, []);
 
-  const loadWithRatio = useCallback((files: FileList, ratioVal: number | null, rLabel: string) => {
+  const loadWithRatio = useCallback(async (files: FileList, ratioVal: number | null, rLabel: string) => {
+    setLoadError(null);
     const arr = Array.from(files).filter((f) => isAcceptedFile(f));
     if (!arr.length) return;
 
-    const items: CropQueueItem[] = [];
-    let done = 0;
-    arr.forEach((f, i) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        const img = new Image();
-        img.onload = () => {
-          const nat = { w: img.width, h: img.height };
-          const d = computeDisp(nat);
-          items[i] = {
-            src: result,
-            name: f.name,
-            natural: nat,
-            disp: d,
-            crop: centered(d.dw, d.dh, ratioVal),
-            adjusted: false,
-          };
-          if (++done === arr.length) {
-            setQueue(items);
-            setCurrentIdx(0);
-            setRatio(ratioVal);
-            setRatioLabel(rLabel);
-            setStep("crop");
-            setZoom(1);
-            setPan({ x: 0, y: 0 });
-          }
-        };
-        img.src = result;
+    const results = await Promise.all(arr.map(readFileAsImage));
+    const ok = results.filter((r): r is LoadedImage => r !== null);
+    const failed = arr.length - ok.length;
+
+    if (!ok.length) {
+      setLoadError(`Couldn't read ${arr.length === 1 ? "that image" : "any of those images"}. Try a different file.`);
+      return;
+    }
+    if (failed > 0) {
+      setLoadError(`Skipped ${failed} unreadable file${failed === 1 ? "" : "s"}.`);
+    }
+
+    const items: CropQueueItem[] = ok.map((img) => {
+      const d = computeDisp(img.nat);
+      return {
+        src: img.src,
+        name: img.name,
+        natural: img.nat,
+        disp: d,
+        crop: centered(d.dw, d.dh, ratioVal),
+        adjusted: false,
       };
-      reader.readAsDataURL(f);
     });
+    setQueue(items);
+    setCurrentIdx(0);
+    setRatio(ratioVal);
+    setRatioLabel(rLabel);
+    setStep("crop");
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
   }, []);
 
   const pickRatio = useCallback((v: number | null, label: string) => {
@@ -165,6 +162,7 @@ export function useSingleCrop() {
     disp: current?.disp ?? { dw: 0, dh: 0 },
     zoom, setZoom, pan, setPan,
     cropPx, cropPy, isMulti,
+    loadError, clearLoadError: () => setLoadError(null),
     loadImage, loadWithRatio, pickRatio, navigateTo, goToRatio, reset,
   };
 }

@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "created": "2026-05-02T03:30:00Z",
+  "base_url": "http://localhost:3001",
+  "screens": [
+    {
+      "url": "/crop",
+      "name": "Crop",
+      "auth_required": false,
+      "source_file": "app/crop/page.tsx",
+      "discovered_from": ["codebase"],
+      "workflow_refs": [],
+      "params": {},
+      "example_url": "/crop"
+    },
+    {
+      "url": "/smart-crop",
+      "name": "Smart Crop",
+      "auth_required": false,
+      "source_file": "app/smart-crop/page.tsx",
+      "discovered_from": ["codebase"],
+      "workflow_refs": [],
+      "params": {},
+      "example_url": "/smart-crop"
+    },
+    {
+      "url": "/logo",
+      "name": "Logo Processor",
+      "auth_required": false,
+      "source_file": "app/logo/page.tsx",
+      "discovered_from": ["codebase"],
+      "workflow_refs": [],
+      "params": {},
+      "example_url": "/logo"
+    }
+  ]
+}

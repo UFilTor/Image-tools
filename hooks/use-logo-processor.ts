@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { NaturalSize } from "@/lib/types";
 import { removeBg, recolorCanvas, canvasToDataURL, hasTransparency } from "@/lib/logo-processing";
 import { isAcceptedFile } from "@/lib/constants";
+import { readFileAsImage } from "@/lib/image-utils";
 
 type LogoStep = "upload" | "edit";
 
@@ -18,6 +19,7 @@ export function useLogoProcessor() {
   const [customHex, setCustomHex] = useState("#022C12");
   const [baseCanvas, setBaseCanvas] = useState<HTMLCanvasElement | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const processLogo = useCallback((imgSrc: string, w: number, h: number, doBgRemoval: boolean, rec: string, hex: string) => {
     const img = new Image();
@@ -43,40 +45,38 @@ export function useLogoProcessor() {
     img.src = imgSrc;
   }, []);
 
-  const loadLogo = useCallback((files: FileList) => {
+  const loadLogo = useCallback(async (files: FileList) => {
+    setLoadError(null);
     const f = Array.from(files).find((f) => isAcceptedFile(f));
     if (!f) return;
-    setName(f.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      const img = new Image();
-      img.onload = () => {
-        setNat({ w: img.width, h: img.height });
-        setSrc(result);
-        setRecolor("none");
+    const loaded = await readFileAsImage(f);
+    if (!loaded) {
+      setLoadError("Couldn't read that logo. Try a different file.");
+      return;
+    }
+    setName(loaded.name);
+    setNat(loaded.nat);
+    setSrc(loaded.src);
+    setRecolor("none");
 
-        // Detect transparency
-        const cv = document.createElement("canvas");
-        cv.width = img.width;
-        cv.height = img.height;
-        cv.getContext("2d")!.drawImage(img, 0, 0);
-        const transparent = hasTransparency(cv);
-        setIsTransparent(transparent);
-
-        if (transparent) {
-          // Skip background removal for already-transparent images
-          setRemoveBgEnabled(false);
-          processLogo(result, img.width, img.height, false, "none", "#022C12");
-        } else {
-          setRemoveBgEnabled(true);
-          processLogo(result, img.width, img.height, true, "none", "#022C12");
-        }
-        setStep("edit");
-      };
-      img.src = result;
+    const cv = document.createElement("canvas");
+    cv.width = loaded.nat.w;
+    cv.height = loaded.nat.h;
+    const tmp = new Image();
+    tmp.onload = () => {
+      cv.getContext("2d")!.drawImage(tmp, 0, 0);
+      const transparent = hasTransparency(cv);
+      setIsTransparent(transparent);
+      if (transparent) {
+        setRemoveBgEnabled(false);
+        processLogo(loaded.src, loaded.nat.w, loaded.nat.h, false, "none", "#022C12");
+      } else {
+        setRemoveBgEnabled(true);
+        processLogo(loaded.src, loaded.nat.w, loaded.nat.h, true, "none", "#022C12");
+      }
+      setStep("edit");
     };
-    reader.readAsDataURL(f);
+    tmp.src = loaded.src;
   }, [processLogo]);
 
   const updateLogo = useCallback((bgRemoval: boolean, rec: string, hex: string) => {
@@ -98,12 +98,14 @@ export function useLogoProcessor() {
     setSrc(null);
     setPreview(null);
     setBaseCanvas(null);
+    setLoadError(null);
   }, []);
 
   return {
     step, src, name, nat, isTransparent,
     removeBgEnabled, setRemoveBgEnabled,
     recolor, setRecolor, customHex, setCustomHex,
-    preview, loadLogo, updateLogo, getExportCanvas, reset,
+    preview, loadError, clearLoadError: () => setLoadError(null),
+    loadLogo, updateLogo, getExportCanvas, reset,
   };
 }

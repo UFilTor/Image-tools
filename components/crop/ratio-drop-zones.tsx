@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RATIOS, isAcceptedFile, MAX_FILE_SIZE } from "@/lib/constants";
 import { convertHeicFiles, isHeicFile } from "@/lib/heic-convert";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
@@ -57,6 +57,21 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
     ratioInputRef.current?.click();
   };
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= RATIOS.length) {
+        e.preventDefault();
+        const r = RATIOS[num - 1];
+        handleCardClick(r.value, r.label);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [converting]);
+
   return (
     <div>
       {converting && (
@@ -66,8 +81,10 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
         {RATIOS.map(({ label, sub, value }, idx) => {
           const isOver = overIdx === idx;
           return (
-            <div
+            <button
+              type="button"
               key={label}
+              aria-label={`Upload images at ${label} (${sub}) ratio`}
               onClick={() => handleCardClick(value, label)}
               onDragOver={(e) => { e.preventDefault(); setOverIdx(idx); }}
               onDragLeave={() => setOverIdx(null)}
@@ -76,14 +93,17 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
                 setOverIdx(null);
                 processFiles(e.dataTransfer.files, value, label);
               }}
+              disabled={converting}
               className={`
                 relative border-2 border-dashed rounded-2xl pt-12 pb-8 px-7 cursor-pointer
-                text-center transition-all duration-200 flex flex-col items-center gap-2
+                text-center transition-[background-color,border-color] duration-200 flex flex-col items-center gap-2
                 hover:border-primary hover:bg-primary-bg
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg
+                disabled:cursor-not-allowed
                 ${isOver ? "border-primary bg-primary-bg" : "border-border bg-surface"}
               `}
             >
-              <span className="absolute top-2.5 right-2.5">
+              <span className="absolute top-2.5 right-2.5 hidden sm:inline-flex">
                 <KeyboardHint shortcut={String(idx + 1)} />
               </span>
               <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em] leading-none">
@@ -92,10 +112,10 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
               <span className="text-[12px] font-medium tracking-[0.04em] text-text-muted">
                 {sub}
               </span>
-              <span className="text-[10px] text-text-dim mt-1">
-                Click or drop image here
+              <span className="text-[10px] text-text-muted mt-1">
+                Click or drop image
               </span>
-            </div>
+            </button>
           );
         })}
       </div>

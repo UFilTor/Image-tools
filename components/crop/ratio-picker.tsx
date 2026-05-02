@@ -78,7 +78,7 @@ export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back
               onMouseEnter={() => setHov(label)}
               onMouseLeave={() => setHov(null)}
               className={`
-                py-4 px-3 rounded-xl border-[1.5px] cursor-pointer transition-all duration-150
+                py-4 px-3 rounded-xl border-[1.5px] cursor-pointer transition-[background-color,border-color] duration-150
                 flex flex-col items-center gap-1 relative
                 ${active
                   ? "border-primary bg-primary-bg"

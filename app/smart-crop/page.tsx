@@ -5,8 +5,10 @@ import { useMultiCrop } from "@/hooks/use-multi-crop";
 import { useCropDrag } from "@/hooks/use-crop-drag";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
+import { useConfirm } from "@/hooks/use-confirm";
 import { RatioDropZones } from "@/components/crop/ratio-drop-zones";
 import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Badge } from "@/components/ui/badge";
 import { SizeInput } from "@/components/ui/size-input";
 import { RatioPicker } from "@/components/crop/ratio-picker";
@@ -32,13 +34,14 @@ export default function SmartCropPage() {
   const [dragOver, setDragOver] = useState<number | null>(null);
 
   const isEdit = editIdx !== null;
+  const resetConfirm = useConfirm({ onConfirm: reset, count: items.length, threshold: 1 });
 
   useKeyboardShortcuts({
     disableModeNav: step === "ratio" || step === "recrop",
     onEnter: isEdit && editItem?.crop && editCrop
       ? () => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, cropFilename(editItem.name))
       : undefined,
-    onEscape: isEdit ? saveAndCloseEdit : step === "review" ? reset : undefined,
+    onEscape: isEdit ? saveAndCloseEdit : step === "review" ? resetConfirm.fire : undefined,
     onLeft: isEdit ? () => navigateEdit("prev") : undefined,
     onRight: isEdit ? () => navigateEdit("next") : undefined,
   });
@@ -53,7 +56,7 @@ export default function SmartCropPage() {
               Smart Crop
             </h1>
             <p className="text-[15px] text-text-secondary leading-[1.5]">
-              Pick a ratio and drop images to start.
+              AI finds faces and focal points across a batch. You review and adjust.
             </p>
           </div>
           <RatioDropZones onDropWithRatio={loadAndAnalyzeWithRatio} />
@@ -70,7 +73,8 @@ export default function SmartCropPage() {
           <RatioPicker
             subtitle={`${items.length} image${items.length !== 1 ? "s" : ""} loaded`}
             onPick={startAnalysis}
-            onBack={reset}
+            onBack={resetConfirm.fire}
+            backLabel={resetConfirm.armed ? `Press again to clear ${items.length} image${items.length === 1 ? "" : "s"}` : "← Go back"}
           />
         </div>
       </div>
@@ -127,8 +131,8 @@ export default function SmartCropPage() {
           />
           {items.length > 1 && (
             <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => navigateEdit("prev")} disabled={editIdx === 0}>
-                &larr; Prev
+              <Button size="sm" aria-label="Previous image" onClick={() => navigateEdit("prev")} disabled={editIdx === 0}>
+                ← Prev
               </Button>
               <ImageFilmstrip
                 items={items.map((it, idx) => ({
@@ -145,8 +149,8 @@ export default function SmartCropPage() {
                   setTimeout(() => openEdit(idx), 0);
                 }}
               />
-              <Button size="sm" onClick={() => navigateEdit("next")} disabled={editIdx === items.length - 1}>
-                Next &rarr;
+              <Button size="sm" aria-label="Next image" onClick={() => navigateEdit("next")} disabled={editIdx === items.length - 1}>
+                Next →
               </Button>
             </div>
           )}
@@ -174,22 +178,33 @@ export default function SmartCropPage() {
     <div className="w-full max-w-[1200px]">
       <div className="animate-fadeUp">
         {/* Header bar */}
-        <div className="flex items-center gap-3 flex-wrap mb-3">
-          <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Results</span>
-          <Badge>{ratioLabel}</Badge>
-          {analyzingCount > 0 && (
-            <span className="text-xs text-text-muted">
-              Processing {analyzingCount} image{analyzingCount !== 1 ? "s" : ""}...
-            </span>
-          )}
-          <div className="flex-1" />
-          <Button size="sm" onClick={() => setStep("recrop")}>
-            <RatioIcon /> Change ratio
-          </Button>
-          <Button size="sm" onClick={reset}>New batch</Button>
-          <Button size="sm" variant="primary" onClick={() => dlAll(items)} disabled={doneCount === 0}>
-            <DlIcon /> Download all
-          </Button>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap mb-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Results</span>
+            <Badge>{ratioLabel}</Badge>
+            {analyzingCount > 0 && (
+              <span className="text-xs text-text-muted">
+                Processing {analyzingCount} image{analyzingCount !== 1 ? "s" : ""}...
+              </span>
+            )}
+          </div>
+          <div className="sm:flex-1" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" onClick={() => setStep("recrop")}>
+              <RatioIcon /> Change ratio
+            </Button>
+            <ConfirmButton
+              size="sm"
+              armed={resetConfirm.armed}
+              onFire={resetConfirm.fire}
+              confirmLabel={`Clear ${items.length} image${items.length === 1 ? "" : "s"}?`}
+            >
+              New batch
+            </ConfirmButton>
+            <Button size="sm" variant="primary" onClick={() => dlAll(items)} disabled={doneCount === 0}>
+              <DlIcon /> Download all
+            </Button>
+          </div>
         </div>
 
         {items.length > 1 && (
@@ -234,13 +249,15 @@ export default function SmartCropPage() {
                     <div className="relative" style={{ width: `${pctW}%`, height: `${pctH}%` }}>
                       <img
                         src={item.src}
-                        alt={item.name}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full"
                         draggable={false}
                       />
                       {item.crop && item.status === "done" && (
                         <div
-                          className="absolute border-2 border-accent pointer-events-none"
+                          className="absolute border-2 border-accent pointer-events-none animate-fadeIn"
                           style={{
                             left: `${(item.crop.x / item.disp.dw) * 100}%`,
                             top: `${(item.crop.y / item.disp.dh) * 100}%`,
@@ -257,8 +274,10 @@ export default function SmartCropPage() {
                 {/* Analyzing overlay */}
                 {(item.status === "analyzing" || item.status === "recalculating") && (
                   <div
+                    role="status"
+                    aria-label="Analyzing image"
                     className="absolute inset-0 backdrop-blur-[2px] flex items-center justify-center"
-                    style={{ background: "rgba(2,18,9,0.42)" }}
+                    style={{ background: "var(--overlay-analyzing)" }}
                   >
                     <div
                       className="w-[30px] h-[30px] rounded-full animate-spin"
@@ -270,10 +289,18 @@ export default function SmartCropPage() {
                 {/* Error overlay */}
                 {item.status === "error" && (
                   <div
-                    className="absolute inset-0 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2"
-                    style={{ background: "rgba(56,12,15,0.55)" }}
+                    className="absolute inset-0 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 px-3 text-center"
+                    style={{ background: "var(--overlay-error)" }}
+                    title={item.focal?.error || "Analysis didn't return a result"}
                   >
-                    <span className="text-[11px] text-white font-bold uppercase tracking-[0.06em]">Analysis failed</span>
+                    <span className="text-[12px] text-white font-semibold leading-snug">
+                      Couldn&apos;t read this one
+                    </span>
+                    {item.focal?.error && (
+                      <span className="text-[10px] text-white/75 leading-snug max-w-[200px] line-clamp-2">
+                        {item.focal.error}
+                      </span>
+                    )}
                     <Button size="sm" variant="danger" onClick={() => retryItem(idx)}>
                       <RetryIcon /> Retry
                     </Button>
@@ -282,8 +309,9 @@ export default function SmartCropPage() {
 
                 {/* Drag handle */}
                 <div
+                  aria-hidden="true"
                   className="absolute top-2 left-2 z-10 rounded-md p-1.5 text-white/85 cursor-grab active:cursor-grabbing backdrop-blur-[4px]"
-                  style={{ background: "rgba(2,18,9,0.5)" }}
+                  style={{ background: "var(--overlay-handle)" }}
                 >
                   <GripIcon />
                 </div>
@@ -291,9 +319,14 @@ export default function SmartCropPage() {
 
               {/* Bottom section */}
               <div className="p-3">
-                <p className="text-xs font-medium text-text truncate mb-1">{item.name}</p>
-                {item.focal?.label && (
-                  <p className="text-[10px] text-text-muted truncate mb-2">{item.focal.label}</p>
+                <p className="text-xs font-medium text-text truncate mb-1.5">{item.name}</p>
+                {item.focal?.label && item.status === "done" && (
+                  <span
+                    className="inline-block text-[11px] font-medium text-primary bg-lichen rounded-md px-2 py-0.5 mb-2.5 max-w-full truncate"
+                    title={item.focal.label}
+                  >
+                    {item.focal.label}
+                  </span>
                 )}
                 <div className="flex items-center gap-1.5">
                   {item.status === "done" && (
@@ -308,10 +341,31 @@ export default function SmartCropPage() {
                     <Button
                       size="sm"
                       variant="primary"
+                      aria-label={`Download ${item.name}`}
                       onClick={() => dlCrop(item.src, item.natural, item.disp, item.crop!, cropFilename(item.name))}
                     >
                       <DlIcon />
                     </Button>
+                  )}
+                  {items.length > 1 && (
+                    <div className="ml-auto flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        aria-label={`Move ${item.name} earlier in download order`}
+                        onClick={() => reorderItems(idx, idx - 1)}
+                        disabled={idx === 0}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        size="sm"
+                        aria-label={`Move ${item.name} later in download order`}
+                        onClick={() => reorderItems(idx, idx + 1)}
+                        disabled={idx === items.length - 1}
+                      >
+                        ↓
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
