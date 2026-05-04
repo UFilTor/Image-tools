@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { isAcceptedFile, MAX_FILE_SIZE } from "@/lib/constants";
 import { convertHeicFiles, isHeicFile } from "@/lib/heic-convert";
+import { convertSvgFiles, isSvgFile } from "@/lib/svg-convert";
 
 export function useClipboardPaste(onFiles: ((files: FileList) => void) | null) {
   useEffect(() => {
@@ -26,8 +27,18 @@ export function useClipboardPaste(onFiles: ((files: FileList) => void) | null) {
 
       if (imageFiles.length > 0) {
         e.preventDefault();
-        if (imageFiles.some(isHeicFile)) {
-          convertHeicFiles(imageFiles).then(onFiles).catch(() => {});
+        const needsHeic = imageFiles.some(isHeicFile);
+        const needsSvg = imageFiles.some(isSvgFile);
+        if (needsHeic || needsSvg) {
+          (async () => {
+            let out: FileList;
+            const dt = new DataTransfer();
+            imageFiles.forEach((f) => dt.items.add(f));
+            out = dt.files;
+            if (needsHeic) out = await convertHeicFiles(Array.from(out));
+            if (needsSvg) out = await convertSvgFiles(Array.from(out));
+            onFiles(out);
+          })().catch(() => {});
         } else {
           const dt = new DataTransfer();
           imageFiles.forEach((f) => dt.items.add(f));

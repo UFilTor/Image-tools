@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RATIOS, isAcceptedFile, MAX_FILE_SIZE } from "@/lib/constants";
 import { convertHeicFiles, isHeicFile } from "@/lib/heic-convert";
+import { convertSvgFiles, isSvgFile } from "@/lib/svg-convert";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
 
 interface RatioDropZonesProps {
@@ -36,13 +37,17 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
     if (!valid) return;
 
     const arr = Array.from(valid);
-    if (arr.some(isHeicFile)) {
+    const needsHeic = arr.some(isHeicFile);
+    const needsSvg = arr.some(isSvgFile);
+    if (needsHeic || needsSvg) {
       setConverting(true);
       try {
-        const converted = await convertHeicFiles(arr);
-        onDropWithRatio(converted, ratioValue, ratioLabel);
+        let out: FileList = valid;
+        if (needsHeic) out = await convertHeicFiles(Array.from(out));
+        if (needsSvg) out = await convertSvgFiles(Array.from(out));
+        onDropWithRatio(out, ratioValue, ratioLabel);
       } catch {
-        setError("Failed to convert HEIC file. Try converting it to JPG first.");
+        setError(needsHeic ? "Failed to convert HEIC file. Try converting it to JPG first." : "Failed to convert SVG file.");
       } finally {
         setConverting(false);
       }
@@ -122,7 +127,7 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
       <input
         ref={ratioInputRef}
         type="file"
-        accept="image/*,.heic,.heif"
+        accept="image/*,.heic,.heif,.svg"
         multiple
         className="hidden"
         onChange={(e) => {

@@ -3,6 +3,7 @@
 import { useRef, useState, ReactNode } from "react";
 import { isAcceptedFile, MAX_FILE_SIZE } from "@/lib/constants";
 import { convertHeicFiles, isHeicFile } from "@/lib/heic-convert";
+import { convertSvgFiles, isSvgFile } from "@/lib/svg-convert";
 import { getPasteShortcut } from "@/lib/platform";
 
 interface DropZoneProps {
@@ -37,13 +38,17 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
     if (!valid) return;
 
     const arr = Array.from(valid);
-    if (arr.some(isHeicFile)) {
+    const needsHeic = arr.some(isHeicFile);
+    const needsSvg = arr.some(isSvgFile);
+    if (needsHeic || needsSvg) {
       setConverting(true);
       try {
-        const converted = await convertHeicFiles(arr);
-        onFiles(converted);
+        let out: FileList = valid;
+        if (needsHeic) out = await convertHeicFiles(Array.from(out));
+        if (needsSvg) out = await convertSvgFiles(Array.from(out));
+        onFiles(out);
       } catch {
-        setError("Failed to convert HEIC file. Try converting it to JPG first.");
+        setError(needsHeic ? "Failed to convert HEIC file. Try converting it to JPG first." : "Failed to convert SVG file.");
       } finally {
         setConverting(false);
       }
@@ -77,7 +82,7 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
         <input
           ref={inputRef}
           type="file"
-          accept="image/*,.heic,.heif"
+          accept="image/*,.heic,.heif,.svg"
           multiple={multiple}
           className="hidden"
           onChange={(e) => {
