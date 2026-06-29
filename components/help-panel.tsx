@@ -15,7 +15,8 @@ function getGroups(modKey: string): ShortcutGroup[] {
       rows: [
         { keys: [`${modKey}1`], label: "Crop" },
         { keys: [`${modKey}2`], label: "Smart Crop" },
-        { keys: [`${modKey}3`], label: "Logo" },
+        { keys: [`${modKey}3`], label: "Upscale" },
+        { keys: [`${modKey}4`], label: "Logo" },
       ],
     },
     {

@@ -62,3 +62,19 @@ export interface MultiCropItem {
   crop: CropRect | null;
   ratio: number;
 }
+
+export type UpscaleFactor = 2 | 4;
+
+export interface UpscaleItem {
+  src: string;
+  name: string;
+  natural: NaturalSize;
+  status: "queued" | "processing" | "done" | "error";
+  /** 0-100, set during processing */
+  progress: number;
+  /** data URL of the upscaled image, set when done */
+  result: string | null;
+  /** dimensions of the upscaled result, set when done */
+  resultNatural: NaturalSize | null;
+  error?: string;
+}

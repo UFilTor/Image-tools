@@ -21,7 +21,7 @@ export function isAcceptedFile(file: File): boolean {
 }
 
 export const SHORTCUT_MAP = {
-  modes: ["crop", "smart-crop", "logo"] as const,
+  modes: ["crop", "smart-crop", "upscale", "logo"] as const,
   ratios: [0, 1, 2, 3] as const, // indices into RATIOS
 };
 
