@@ -22,7 +22,7 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
     setError(null);
     for (const file of Array.from(files)) {
       if (!isAcceptedFile(file)) {
-        setError(`Unsupported format: ${file.name}. Use PNG, JPG, WebP, or HEIC.`);
+        setError(`Unsupported format: ${file.name}. Use PNG, JPG, WebP, AVIF, or HEIC.`);
         return null;
       }
       if (file.size > MAX_FILE_SIZE) {
@@ -82,7 +82,7 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
         <input
           ref={inputRef}
           type="file"
-          accept="image/*,.heic,.heif,.svg"
+          accept="image/*,.heic,.heif,.svg,.avif"
           multiple={multiple}
           className="hidden"
           onChange={(e) => {

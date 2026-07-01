@@ -62,7 +62,7 @@ export default function LogoPage() {
                 <p className={`text-[15px] font-medium ${over ? "text-primary" : "text-text-secondary"}`}>
                   Drop logo here or <span className="text-primary font-bold">browse</span>
                 </p>
-                <p className="text-xs mt-2 text-text-muted">PNG, JPG, WebP, or HEIC</p>
+                <p className="text-xs mt-2 text-text-muted">PNG, JPG, WebP, AVIF, or HEIC</p>
               </>
             )}
           </DropZone>

@@ -21,7 +21,7 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
     setError(null);
     for (const file of Array.from(files)) {
       if (!isAcceptedFile(file)) {
-        setError(`Unsupported format: ${file.name}. Use PNG, JPG, WebP, or HEIC.`);
+        setError(`Unsupported format: ${file.name}. Use PNG, JPG, WebP, AVIF, or HEIC.`);
         return null;
       }
       if (file.size > MAX_FILE_SIZE) {
@@ -127,7 +127,7 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
       <input
         ref={ratioInputRef}
         type="file"
-        accept="image/*,.heic,.heif,.svg"
+        accept="image/*,.heic,.heif,.svg,.avif"
         multiple
         className="hidden"
         onChange={(e) => {

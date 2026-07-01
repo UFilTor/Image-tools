@@ -74,7 +74,7 @@ export default function UpscalePage() {
                   Drop images to upscale {scale}×
                 </div>
                 <div className="text-[13px] text-text-muted">
-                  or click to browse — PNG, JPG, WebP, HEIC, SVG
+                  or click to browse — PNG, JPG, WebP, AVIF, HEIC, SVG
                 </div>
               </>
             )}

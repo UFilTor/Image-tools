@@ -9,9 +9,9 @@ export const RATIOS: Ratio[] = [
 
 export const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
-export const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/heic", "image/heif", "image/svg+xml"];
+export const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/avif", "image/heic", "image/heif", "image/svg+xml"];
 
-const EXTRA_EXTENSIONS = [".heic", ".heif", ".svg"];
+const EXTRA_EXTENSIONS = [".heic", ".heif", ".svg", ".avif"];
 
 /** Check if a file is an accepted type (by MIME or extension for types with unreliable MIME) */
 export function isAcceptedFile(file: File): boolean {
