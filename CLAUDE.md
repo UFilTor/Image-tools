@@ -17,11 +17,14 @@ npx vitest run __tests__/crop-math.test.ts
 
 ## Architecture
 
-Understory Image Tools — a Next.js 16 (App Router) internal tool with three modes:
+Understory Image Tools — a Next.js 16 (App Router) internal tool with several modes:
 
 - **Crop** (`/crop`) — upload images (click or drop onto ratio cards), adjust crop, batch queue with filmstrip navigation, download individually or as zip
 - **Smart Crop** (`/smart-crop`) — batch upload, AI finds focal points (falls back to center crop without API key), review/edit crops, download as zip
 - **Logo Processor** (`/logo`) — auto-detect transparency, remove background (toggle, not slider), optional recolor, download PNG
+- **Extend** (`/extend`) — pad an image out to a target ratio (reuses `RATIOS`) plus a padding % slider, centering the subject. Fill styles: solid color, blurred edge, mirrored edge. Fully client-side (no API). Batch queue + filmstrip like Crop. Note: "generative fill" is intentionally NOT here — Anthropic has no image-generation model; the fill-style seam in `lib/extend-utils.ts` is where an outpainting provider (Gemini/OpenAI/Stability) would slot in later.
+
+Modes are registered in `SHORTCUT_MAP.modes` (`lib/constants.ts`), the `tabs` array (`components/nav-tabs.tsx`), and routed via Cmd/Ctrl+1..N in `use-keyboard-shortcuts`.
 
 ### Data flow pattern
 

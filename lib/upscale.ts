@@ -1,4 +1,31 @@
-import { UpscaleFactor } from "./types";
+import { UpscaleFactor, NaturalSize } from "./types";
+
+/**
+ * Output-size safeguards. Upscaling is tiled so it won't blow WebGL texture limits, but the
+ * final PNG is assembled onto one canvas held in memory — a large source at 4x can produce a
+ * hundreds-of-megapixel canvas that freezes or crashes the tab. We refuse anything past these
+ * caps up front with a clear message instead of attempting it.
+ */
+export const MAX_OUTPUT_PIXELS = 40_000_000; // ~40 megapixels of output
+export const MAX_OUTPUT_SIDE = 10_000; // px, longest side of the output
+
+/** Predict the output dimensions for an image at a given scale. */
+export function predictUpscaleSize(natural: NaturalSize, scale: UpscaleFactor): NaturalSize {
+  return { w: natural.w * scale, h: natural.h * scale };
+}
+
+/**
+ * Returns a user-facing error message if upscaling this image at this scale would exceed the
+ * safe output caps, or null if it's fine to proceed.
+ */
+export function upscaleSizeError(natural: NaturalSize, scale: UpscaleFactor): string | null {
+  const { w, h } = predictUpscaleSize(natural, scale);
+  if (w * h > MAX_OUTPUT_PIXELS || w > MAX_OUTPUT_SIDE || h > MAX_OUTPUT_SIDE) {
+    const suggestion = scale === 4 ? "Try 2× or a smaller image." : "Try a smaller image.";
+    return `Too large for ${scale}× (would be ${w}×${h}). ${suggestion}`;
+  }
+  return null;
+}
 
 /**
  * In-browser AI upscaling via UpscalerJS (TensorFlow.js + ESRGAN).
@@ -25,9 +52,10 @@ async function getUpscaler(scale: UpscaleFactor): Promise<{
   const Upscaler = (await import("upscaler")).default as unknown as new (opts: {
     model: unknown;
   }) => { upscale: (src: string, opts: Record<string, unknown>) => Promise<string> };
-  // esrgan-slim exports the scale models as named members (x2, x3, x4, x8) on the
-  // module namespace — not under `default`.
-  const models = (await import("@upscalerjs/esrgan-slim")) as unknown as {
+  // esrgan-thick exports the scale models as named members (x2, x3, x4, x8) on the
+  // module namespace — not under `default`. It's the highest-quality ESRGAN variant
+  // (larger download + slower compute than -slim/-medium, better detail recovery).
+  const models = (await import("@upscalerjs/esrgan-thick")) as unknown as {
     x2: unknown;
     x4: unknown;
   };

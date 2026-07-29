@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import { UpscaleItem, UpscaleFactor } from "@/lib/types";
 import { readFileAsImage } from "@/lib/image-utils";
 import { isAcceptedFile } from "@/lib/constants";
-import { upscaleImage, measureDataUrl } from "@/lib/upscale";
+import { upscaleImage, measureDataUrl, upscaleSizeError } from "@/lib/upscale";
 
 type UpscaleStep = "upload" | "processing";
 
@@ -23,6 +23,19 @@ export function useUpscale() {
     setModelLoading(true);
     for (let idx = 0; idx < queue.length; idx++) {
       if (myGen !== runGen.current) return;
+
+      // Guard: refuse outputs that would be too large for the browser to assemble.
+      const sizeErr = upscaleSizeError(queue[idx].natural, factor);
+      if (sizeErr) {
+        setItems((prev) => {
+          if (myGen !== runGen.current) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], status: "error", progress: 0, error: sizeErr };
+          return next;
+        });
+        continue;
+      }
+
       setItems((prev) => {
         if (myGen !== runGen.current) return prev;
         const next = [...prev];
@@ -109,6 +122,18 @@ export function useUpscale() {
   const retryItem = useCallback((idx: number) => {
     const current = items[idx];
     if (!current || current.status === "processing") return;
+
+    // Guard: same output-size safeguard as the batch runner.
+    const sizeErr = upscaleSizeError(current.natural, scale);
+    if (sizeErr) {
+      setItems((prev) => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], status: "error", progress: 0, result: null, resultNatural: null, error: sizeErr };
+        return next;
+      });
+      return;
+    }
+
     setItems((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], status: "processing", progress: 0, result: null, resultNatural: null, error: undefined };

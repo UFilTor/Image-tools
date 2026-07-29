@@ -168,7 +168,7 @@ export default function UpscalePage() {
                     title={item.error || "Upscaling failed"}
                   >
                     <span className="text-[12px] text-white font-semibold leading-snug">
-                      Couldn&apos;t upscale this one
+                      {item.error || "Couldn't upscale this one"}
                     </span>
                     <Button size="sm" variant="danger" onClick={() => retryItem(idx)}>
                       <RetryIcon /> Retry

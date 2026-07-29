@@ -49,6 +49,13 @@ export interface CropQueueItem {
   adjusted: boolean;
 }
 
+export interface ExtendQueueItem {
+  src: string;
+  name: string;
+  natural: NaturalSize;
+  adjusted: boolean;
+}
+
 export type CropDragType = "move" | "tl" | "tr" | "bl" | "br" | "t" | "b" | "l" | "r";
 
 export interface MultiCropItem {

@@ -1,9 +1,12 @@
 "use client";
 
-import { CropQueueItem } from "@/lib/types";
+interface FilmstripItem {
+  src: string;
+  adjusted?: boolean;
+}
 
 interface ImageFilmstripProps {
-  items: CropQueueItem[];
+  items: FilmstripItem[];
   currentIdx: number;
   onSelect: (idx: number) => void;
 }

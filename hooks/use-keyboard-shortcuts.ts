@@ -31,7 +31,7 @@ export function useKeyboardShortcuts(actions: ShortcutActions = {}) {
 
       if (!a.disableModeNav && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         const num = parseInt(e.key, 10);
-        if (num >= 1 && num <= 4) {
+        if (num >= 1 && num <= SHORTCUT_MAP.modes.length) {
           e.preventDefault();
           router.push(`/${SHORTCUT_MAP.modes[num - 1]}`);
           return;

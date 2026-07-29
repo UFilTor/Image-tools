@@ -8,8 +8,9 @@ import { useModKey } from "@/lib/platform";
 const tabs = [
   { href: "/crop", label: "Crop", num: "1" },
   { href: "/smart-crop", label: "Smart Crop", num: "2" },
-  { href: "/upscale", label: "Upscale", num: "3" },
-  { href: "/logo", label: "Logo", num: "4" },
+  { href: "/extend", label: "Extend", num: "3" },
+  { href: "/upscale", label: "Upscale", num: "4" },
+  { href: "/logo", label: "Logo", num: "5" },
 ];
 
 export function NavTabs() {
