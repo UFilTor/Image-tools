@@ -52,10 +52,10 @@ async function getUpscaler(scale: UpscaleFactor): Promise<{
   const Upscaler = (await import("upscaler")).default as unknown as new (opts: {
     model: unknown;
   }) => { upscale: (src: string, opts: Record<string, unknown>) => Promise<string> };
-  // esrgan-thick exports the scale models as named members (x2, x3, x4, x8) on the
-  // module namespace — not under `default`. It's the highest-quality ESRGAN variant
-  // (larger download + slower compute than -slim/-medium, better detail recovery).
-  const models = (await import("@upscalerjs/esrgan-thick")) as unknown as {
+  // esrgan-medium exports the scale models as named members (x2, x3, x4, x8) on the
+  // module namespace — not under `default`. Middle ESRGAN variant: better detail than
+  // -slim, much lighter/faster than -thick (which could hang the main thread on big images).
+  const models = (await import("@upscalerjs/esrgan-medium")) as unknown as {
     x2: unknown;
     x4: unknown;
   };
