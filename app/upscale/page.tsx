@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useUpscale } from "@/hooks/use-upscale";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
@@ -8,10 +9,14 @@ import { DropZone } from "@/components/ui/drop-zone";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Badge } from "@/components/ui/badge";
+import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
 import { dlDataUrl, dlAllUpscaled } from "@/lib/download";
 import { upscaleFilename } from "@/lib/upscale";
 import { UpscaleFactor } from "@/lib/types";
 import { DlIcon, RetryIcon } from "@/components/icons";
+import { CompareSlider } from "@/components/upscale/compare-slider";
+
+type ZoomMode = "full" | "fit";
 
 function ScaleToggle({ scale, onChange }: { scale: UpscaleFactor; onChange: (s: UpscaleFactor) => void }) {
   return (
@@ -43,9 +48,32 @@ export default function UpscalePage() {
 
   useClipboardPaste(step === "upload" ? loadAndUpscale : null);
   const resetConfirm = useConfirm({ onConfirm: reset, count: items.length, threshold: 1 });
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [zoom, setZoom] = useState<ZoomMode>("full");
+
+  // Keep the index valid when the batch shrinks or resets (convergent adjust-during-render).
+  if (currentIdx !== 0 && currentIdx >= items.length) setCurrentIdx(0);
+
+  const current = items[currentIdx] || null;
+  const isMulti = items.length > 1;
+  const isDone = current?.status === "done" && !!current.result;
+
+  const navigateTo = (idx: number) => {
+    if (idx < 0 || idx >= items.length) return;
+    setCurrentIdx(idx);
+  };
+
+  const downloadCurrent = () => {
+    if (current?.status === "done" && current.result) {
+      dlDataUrl(current.result, upscaleFilename(current.name, scale, current.mode));
+    }
+  };
 
   useKeyboardShortcuts({
+    onEnter: step === "processing" && isDone ? downloadCurrent : undefined,
     onEscape: step === "processing" ? resetConfirm.fire : undefined,
+    onLeft: isMulti && step === "processing" ? () => navigateTo(currentIdx - 1) : undefined,
+    onRight: isMulti && step === "processing" ? () => navigateTo(currentIdx + 1) : undefined,
   });
 
   /* -- Upload step -- */
@@ -58,7 +86,8 @@ export default function UpscalePage() {
               Upscale
             </h1>
             <p className="text-[15px] text-text-secondary leading-[1.5]">
-              Enlarge low-resolution images with AI, right in your browser. Pick a scale, then drop images.
+              Improve images with AI, right in your browser. Small images get upscaled,
+              large ones get enhanced automatically.
             </p>
           </div>
 
@@ -81,72 +110,102 @@ export default function UpscalePage() {
           </DropZone>
 
           <p className="text-[12px] text-text-dim text-center mt-4 leading-[1.5]">
-            Runs entirely in your browser — nothing is uploaded. The AI model loads on first use,
-            so the first image takes a little longer. Very small or heavily compressed images improve only modestly.
+            Runs entirely in your browser — nothing is uploaded. Images under 1000px are upscaled
+            {" "}{scale}× (more pixels + sharper edges); larger images keep their size and get an
+            AI enhancement pass instead. The model loads on first use, so the first image takes a little longer.
           </p>
         </div>
       </div>
     );
   }
 
-  /* -- Processing / results grid -- */
+  /* -- Compare / edit view (mirrors Crop's batch edit layout) -- */
   return (
     <div className="w-full max-w-[1200px]">
-      <div className="animate-fadeUp">
-        {/* Header bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap mb-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Results</span>
-            <Badge>{scale}×</Badge>
-            {modelLoading && processingCount > 0 && (
-              <span className="text-xs text-text-muted animate-pulse">Loading AI model…</span>
-            )}
-            {!modelLoading && processingCount > 0 && (
-              <span className="text-xs text-text-muted">
-                Upscaling {processingCount} image{processingCount !== 1 ? "s" : ""}…
-              </span>
-            )}
-          </div>
-          <div className="sm:flex-1" />
-          <div className="flex items-center gap-2 flex-wrap">
-            <ScaleToggle scale={scale} onChange={changeScale} />
-            <ConfirmButton
-              size="sm"
-              armed={resetConfirm.armed}
-              onFire={resetConfirm.fire}
-              confirmLabel={`Clear ${items.length} image${items.length === 1 ? "" : "s"}?`}
+      <div className="flex flex-col items-center gap-4 animate-fadeUp">
+        {/* Header row */}
+        <div className="flex items-center gap-2.5 mb-1 flex-wrap justify-center">
+          <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Compare</span>
+          <Badge>{current?.mode === "enhance" ? "Enhance" : `${scale}×`}</Badge>
+          {isMulti && (
+            <span className="text-[13px] text-text-muted font-medium tabular-nums">
+              {currentIdx + 1} of {items.length}
+            </span>
+          )}
+          {current && (
+            <span className="text-[13px] text-text-muted tabular-nums">
+              {current.status === "done" && current.resultNatural
+                ? `${current.natural.w}×${current.natural.h} → ${current.resultNatural.w}×${current.resultNatural.h}`
+                : `${current.natural.w}×${current.natural.h}`}
+            </span>
+          )}
+          {isDone && (
+            <div
+              role="group"
+              aria-label="Zoom level"
+              className="inline-flex border border-border rounded-button overflow-hidden text-[12px] font-semibold"
             >
-              New batch
-            </ConfirmButton>
-            <Button size="sm" variant="primary" onClick={() => dlAllUpscaled(items, scale)} disabled={doneCount === 0}>
-              <DlIcon /> Download all
-            </Button>
-          </div>
+              {([["full", "100%"], ["fit", "Fit"]] as [ZoomMode, string][]).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setZoom(mode)}
+                  aria-pressed={zoom === mode}
+                  className={`px-3 py-1.5 transition-colors duration-150 ${
+                    zoom === mode ? "bg-primary text-accent" : "bg-transparent text-text-muted hover:text-primary"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {modelLoading && processingCount > 0 && (
+            <span className="text-xs text-text-muted animate-pulse">Loading AI model…</span>
+          )}
         </div>
 
-        {/* Grid */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
-          {items.map((item, idx) => (
-            <div
-              key={idx}
-              className="bg-surface border border-border rounded-xl overflow-hidden transition-all duration-150 hover:border-border-hover"
-            >
-              {/* Image preview */}
-              <div className="relative aspect-[4/3] overflow-hidden bg-surface-alt flex items-center justify-center">
+        {/* Stage */}
+        {current && (
+          <div className="relative w-full max-w-[1000px] rounded-xl overflow-hidden border border-border bg-surface-alt">
+            {isDone ? (
+              zoom === "full" && current.resultNatural ? (
+                <div
+                  className="overflow-auto"
+                  style={{ height: "min(62vh, 720px)" }}
+                  ref={(el) => {
+                    // center the pan position when the element mounts for this item/zoom
+                    if (el && el.dataset.centered !== `${currentIdx}`) {
+                      el.dataset.centered = `${currentIdx}`;
+                      el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+                      el.scrollTop = (el.scrollHeight - el.clientHeight) / 2;
+                    }
+                  }}
+                >
+                  <div
+                    className="relative mx-auto"
+                    style={{ width: current.resultNatural.w, height: current.resultNatural.h }}
+                  >
+                    <CompareSlider before={current.src} after={current.result!} alt={current.name} afterLabel={current.mode === "enhance" ? "Enhanced" : "Upscaled"} />
+                  </div>
+                </div>
+              ) : (
+                <div className="relative" style={{ height: "min(62vh, 720px)" }}>
+                  <CompareSlider before={current.src} after={current.result!} alt={current.name} afterLabel={current.mode === "enhance" ? "Enhanced" : "Upscaled"} />
+                </div>
+              )
+            ) : (
+              <div className="relative flex items-center justify-center" style={{ height: "min(62vh, 720px)" }}>
                 <img
-                  src={item.result || item.src}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
+                  src={current.src}
+                  alt={current.name}
                   className="max-w-full max-h-full object-contain"
                   draggable={false}
                 />
-
-                {/* Queued / processing overlay */}
-                {(item.status === "queued" || item.status === "processing") && (
+                {(current.status === "queued" || current.status === "processing") && (
                   <div
                     role="status"
-                    aria-label={item.status === "queued" ? "Queued" : "Upscaling image"}
+                    aria-label={current.status === "queued" ? "Queued" : "Upscaling image"}
                     className="absolute inset-0 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2"
                     style={{ background: "var(--overlay-analyzing)" }}
                   >
@@ -155,58 +214,59 @@ export default function UpscalePage() {
                       style={{ border: "3px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }}
                     />
                     <span className="text-[12px] text-white font-semibold tabular-nums">
-                      {item.status === "queued" ? "Queued" : `${item.progress}%`}
+                      {current.status === "queued" ? "Queued" : `${current.progress}%`}
                     </span>
                   </div>
                 )}
-
-                {/* Error overlay */}
-                {item.status === "error" && (
+                {current.status === "error" && (
                   <div
                     className="absolute inset-0 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 px-3 text-center"
                     style={{ background: "var(--overlay-error)" }}
-                    title={item.error || "Upscaling failed"}
                   >
-                    <span className="text-[12px] text-white font-semibold leading-snug">
-                      {item.error || "Couldn't upscale this one"}
+                    <span className="text-[13px] text-white font-semibold leading-snug">
+                      {current.error || "Couldn't upscale this one"}
                     </span>
-                    <Button size="sm" variant="danger" onClick={() => retryItem(idx)}>
+                    <Button size="sm" variant="danger" onClick={() => retryItem(currentIdx)}>
                       <RetryIcon /> Retry
                     </Button>
                   </div>
                 )}
               </div>
+            )}
+          </div>
+        )}
 
-              {/* Bottom section */}
-              <div className="p-3">
-                <p className="text-xs font-medium text-text truncate mb-1.5">{item.name}</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-text-muted tabular-nums">
-                    {item.status === "done" && item.resultNatural
-                      ? `${item.natural.w}×${item.natural.h} → ${item.resultNatural.w}×${item.resultNatural.h}`
-                      : `${item.natural.w}×${item.natural.h}`}
-                  </span>
-                  <div className="ml-auto flex items-center gap-1.5">
-                    {item.status === "done" && item.result && (
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        aria-label={`Download ${item.name}`}
-                        onClick={() => dlDataUrl(item.result!, upscaleFilename(item.name, scale))}
-                      >
-                        <DlIcon />
-                      </Button>
-                    )}
-                    {item.status === "error" && (
-                      <Button size="sm" onClick={() => retryItem(idx)}>
-                        <RetryIcon /> Retry
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
+        {/* Filmstrip */}
+        {isMulti && (
+          <div className="flex items-center gap-2">
+            <Button size="sm" aria-label="Previous image" onClick={() => navigateTo(currentIdx - 1)} disabled={currentIdx === 0}>
+              ← Prev
+            </Button>
+            <ImageFilmstrip items={items} currentIdx={currentIdx} onSelect={navigateTo} />
+            <Button size="sm" aria-label="Next image" onClick={() => navigateTo(currentIdx + 1)} disabled={currentIdx === items.length - 1}>
+              Next →
+            </Button>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
+          <ScaleToggle scale={scale} onChange={changeScale} />
+          <ConfirmButton
+            armed={resetConfirm.armed}
+            onFire={resetConfirm.fire}
+            confirmLabel={`Clear ${items.length} image${items.length === 1 ? "" : "s"}?`}
+          >
+            New batch
+          </ConfirmButton>
+          <Button variant="primary" onClick={downloadCurrent} disabled={!isDone}>
+            <DlIcon /> Download
+          </Button>
+          {isMulti && (
+            <Button variant="primary" onClick={() => dlAllUpscaled(items, scale)} disabled={doneCount === 0}>
+              <DlIcon /> Download all
+            </Button>
+          )}
         </div>
       </div>
     </div>

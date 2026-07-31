@@ -3,9 +3,36 @@ import {
   upscaleFilename,
   predictUpscaleSize,
   upscaleSizeError,
+  pickMode,
+  enhanceSizeError,
+  ENHANCE_THRESHOLD,
   MAX_OUTPUT_PIXELS,
   MAX_OUTPUT_SIDE,
 } from "@/lib/upscale";
+
+describe("pickMode", () => {
+  it("upscales small images", () => {
+    expect(pickMode({ w: 400, h: 300 })).toBe("upscale");
+    expect(pickMode({ w: 999, h: 400 })).toBe("upscale");
+  });
+
+  it("enhances images at or above the threshold on the longest side", () => {
+    expect(ENHANCE_THRESHOLD).toBe(1000);
+    expect(pickMode({ w: 1000, h: 400 })).toBe("enhance");
+    expect(pickMode({ w: 400, h: 2400 })).toBe("enhance");
+  });
+});
+
+describe("enhanceSizeError", () => {
+  it("allows a typical large photo", () => {
+    expect(enhanceSizeError({ w: 3000, h: 2000 })).toBeNull();
+  });
+  it("blocks sources whose 2x intermediate exceeds the caps", () => {
+    // 4000x4000 -> 8000x8000 intermediate = 64MP > 40MP cap
+    const msg = enhanceSizeError({ w: 4000, h: 4000 });
+    expect(msg).toContain("Too large to enhance");
+  });
+});
 
 describe("predictUpscaleSize", () => {
   it("multiplies both dimensions by the scale", () => {
@@ -55,5 +82,9 @@ describe("upscaleFilename", () => {
   });
   it("falls back for empty names", () => {
     expect(upscaleFilename("", 2)).toBe("upscaled_2x.png");
+  });
+  it("names enhanced results without a scale suffix", () => {
+    expect(upscaleFilename("photo.jpg", 2, "enhance")).toBe("photo_enhanced.png");
+    expect(upscaleFilename("", 2, "enhance")).toBe("enhanced.png");
   });
 });

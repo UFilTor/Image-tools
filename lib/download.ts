@@ -101,7 +101,7 @@ export async function dlAllUpscaled(items: UpscaleItem[], scale: UpscaleFactor):
     ready.map(async (it) => {
       try {
         const blob = await (await fetch(it.result!)).blob();
-        zip.file(upscaleFilename(it.name, scale), blob);
+        zip.file(upscaleFilename(it.name, scale, it.mode), blob);
       } catch {
         // skip individual failures
       }

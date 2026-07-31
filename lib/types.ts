@@ -76,6 +76,8 @@ export interface UpscaleItem {
   src: string;
   name: string;
   natural: NaturalSize;
+  /** Auto-picked per image: small sources get upscaled, large ones get enhanced (1x). */
+  mode: "upscale" | "enhance";
   status: "queued" | "processing" | "done" | "error";
   /** 0-100, set during processing */
   progress: number;

@@ -4,9 +4,16 @@ import { useState, useCallback, useRef } from "react";
 import { UpscaleItem, UpscaleFactor } from "@/lib/types";
 import { readFileAsImage } from "@/lib/image-utils";
 import { isAcceptedFile } from "@/lib/constants";
-import { upscaleImage, measureDataUrl, upscaleSizeError } from "@/lib/upscale";
+import { upscaleImage, measureDataUrl, upscaleSizeError, enhanceSizeError, pickMode } from "@/lib/upscale";
 
 type UpscaleStep = "upload" | "processing";
+
+/** Release object URLs held by previous results so discarded blobs can be GC'd. */
+function revokeResults(items: UpscaleItem[]) {
+  for (const it of items) {
+    if (it.result?.startsWith("blob:")) URL.revokeObjectURL(it.result);
+  }
+}
 
 export function useUpscale() {
   const [step, setStep] = useState<UpscaleStep>("upload");
@@ -25,7 +32,9 @@ export function useUpscale() {
       if (myGen !== runGen.current) return;
 
       // Guard: refuse outputs that would be too large for the browser to assemble.
-      const sizeErr = upscaleSizeError(queue[idx].natural, factor);
+      const sizeErr = queue[idx].mode === "upscale"
+        ? upscaleSizeError(queue[idx].natural, factor)
+        : enhanceSizeError(queue[idx].natural);
       if (sizeErr) {
         setItems((prev) => {
           if (myGen !== runGen.current) return prev;
@@ -51,7 +60,7 @@ export function useUpscale() {
             if (next[idx]?.status === "processing") next[idx] = { ...next[idx], progress: pct };
             return next;
           });
-        });
+        }, queue[idx].mode);
         if (myGen !== runGen.current) return;
         setModelLoading(false);
         const resultNatural = await measureDataUrl(result);
@@ -92,6 +101,7 @@ export function useUpscale() {
       if (r) {
         ok.push({
           src: r.src, name: r.name, natural: r.nat,
+          mode: pickMode(r.nat),
           status: "queued", progress: 0, result: null, resultNatural: null,
         });
       }
@@ -112,6 +122,7 @@ export function useUpscale() {
   const changeScale = useCallback((factor: UpscaleFactor) => {
     setScale(factor);
     if (factor === scale || !items.length) return;
+    revokeResults(items);
     const reset = items.map((it) => ({
       ...it, status: "queued" as const, progress: 0, result: null, resultNatural: null, error: undefined,
     }));
@@ -122,9 +133,12 @@ export function useUpscale() {
   const retryItem = useCallback((idx: number) => {
     const current = items[idx];
     if (!current || current.status === "processing") return;
+    if (current.result?.startsWith("blob:")) URL.revokeObjectURL(current.result);
 
     // Guard: same output-size safeguard as the batch runner.
-    const sizeErr = upscaleSizeError(current.natural, scale);
+    const sizeErr = current.mode === "upscale"
+      ? upscaleSizeError(current.natural, scale)
+      : enhanceSizeError(current.natural);
     if (sizeErr) {
       setItems((prev) => {
         const next = [...prev];
@@ -149,7 +163,7 @@ export function useUpscale() {
             if (next[idx]?.status === "processing") next[idx] = { ...next[idx], progress: pct };
             return next;
           });
-        });
+        }, current.mode);
         const resultNatural = await measureDataUrl(result);
         setItems((prev) => {
           const next = [...prev];
@@ -168,11 +182,12 @@ export function useUpscale() {
 
   const reset = useCallback(() => {
     runGen.current++;
+    revokeResults(items);
     setItems([]);
     setStep("upload");
     setModelLoading(false);
     setLoadError(null);
-  }, []);
+  }, [items]);
 
   const doneCount = items.filter((it) => it.status === "done").length;
   const processingCount = items.filter((it) => it.status === "processing" || it.status === "queued").length;
