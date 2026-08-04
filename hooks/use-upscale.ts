@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import { UpscaleItem, UpscaleFactor } from "@/lib/types";
 import { readFileAsImage } from "@/lib/image-utils";
 import { isAcceptedFile } from "@/lib/constants";
-import { upscaleImage, measureDataUrl, upscaleSizeError, enhanceSizeError, pickMode } from "@/lib/upscale";
+import { upscaleImage, measureDataUrl, modeSizeError, pickMode, ProcessMode } from "@/lib/upscale";
 
 type UpscaleStep = "upload" | "processing";
 
@@ -32,9 +32,7 @@ export function useUpscale() {
       if (myGen !== runGen.current) return;
 
       // Guard: refuse outputs that would be too large for the browser to assemble.
-      const sizeErr = queue[idx].mode === "upscale"
-        ? upscaleSizeError(queue[idx].natural, factor)
-        : enhanceSizeError(queue[idx].natural);
+      const sizeErr = modeSizeError(queue[idx].natural, queue[idx].mode, factor);
       if (sizeErr) {
         setItems((prev) => {
           if (myGen !== runGen.current) return prev;
@@ -130,19 +128,17 @@ export function useUpscale() {
     runBatch(reset, factor);
   }, [scale, items, runBatch]);
 
-  const retryItem = useCallback((idx: number) => {
-    const current = items[idx];
-    if (!current || current.status === "processing") return;
-    if (current.result?.startsWith("blob:")) URL.revokeObjectURL(current.result);
+  // Re-run one item (used by retry and the per-image mode toggle). `item` carries
+  // the mode to run with; state at `idx` is reset first.
+  const runSingle = useCallback((idx: number, item: UpscaleItem) => {
+    if (item.result?.startsWith("blob:")) URL.revokeObjectURL(item.result);
 
     // Guard: same output-size safeguard as the batch runner.
-    const sizeErr = current.mode === "upscale"
-      ? upscaleSizeError(current.natural, scale)
-      : enhanceSizeError(current.natural);
+    const sizeErr = modeSizeError(item.natural, item.mode, scale);
     if (sizeErr) {
       setItems((prev) => {
         const next = [...prev];
-        next[idx] = { ...next[idx], status: "error", progress: 0, result: null, resultNatural: null, error: sizeErr };
+        next[idx] = { ...item, status: "error", progress: 0, result: null, resultNatural: null, error: sizeErr };
         return next;
       });
       return;
@@ -150,20 +146,21 @@ export function useUpscale() {
 
     setItems((prev) => {
       const next = [...prev];
-      next[idx] = { ...next[idx], status: "processing", progress: 0, result: null, resultNatural: null, error: undefined };
+      next[idx] = { ...item, status: "processing", progress: 0, result: null, resultNatural: null, error: undefined };
       return next;
     });
     const myGen = runGen.current;
     (async () => {
       try {
-        const result = await upscaleImage(current.src, scale, (pct) => {
+        const result = await upscaleImage(item.src, scale, (pct) => {
           if (myGen !== runGen.current) return;
           setItems((prev) => {
             const next = [...prev];
             if (next[idx]?.status === "processing") next[idx] = { ...next[idx], progress: pct };
             return next;
           });
-        }, current.mode);
+        }, item.mode);
+        if (myGen !== runGen.current) return;
         const resultNatural = await measureDataUrl(result);
         setItems((prev) => {
           const next = [...prev];
@@ -171,6 +168,7 @@ export function useUpscale() {
           return next;
         });
       } catch (err) {
+        if (myGen !== runGen.current) return;
         setItems((prev) => {
           const next = [...prev];
           next[idx] = { ...next[idx], status: "error", error: err instanceof Error ? err.message : "Upscaling failed" };
@@ -178,7 +176,20 @@ export function useUpscale() {
         });
       }
     })();
-  }, [items, scale]);
+  }, [scale]);
+
+  const retryItem = useCallback((idx: number) => {
+    const current = items[idx];
+    if (!current || current.status === "processing") return;
+    runSingle(idx, current);
+  }, [items, runSingle]);
+
+  // Switch one image between upscale and enhance and re-run just that image.
+  const changeMode = useCallback((idx: number, mode: ProcessMode) => {
+    const current = items[idx];
+    if (!current || current.status === "processing" || current.mode === mode) return;
+    runSingle(idx, { ...current, mode });
+  }, [items, runSingle]);
 
   const reset = useCallback(() => {
     runGen.current++;
@@ -195,7 +206,7 @@ export function useUpscale() {
   return {
     step, items, scale, modelLoading, loadError,
     doneCount, processingCount,
-    loadAndUpscale, changeScale, retryItem, reset,
+    loadAndUpscale, changeScale, changeMode, retryItem, reset,
     clearLoadError: () => setLoadError(null),
   };
 }

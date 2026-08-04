@@ -8,11 +8,10 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { DropZone } from "@/components/ui/drop-zone";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
-import { Badge } from "@/components/ui/badge";
 import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
 import { dlDataUrl, dlAllUpscaled } from "@/lib/download";
-import { upscaleFilename } from "@/lib/upscale";
-import { UpscaleFactor } from "@/lib/types";
+import { upscaleFilename, modeSizeError, ProcessMode } from "@/lib/upscale";
+import { UpscaleFactor, UpscaleItem } from "@/lib/types";
 import { DlIcon, RetryIcon } from "@/components/icons";
 import { CompareSlider } from "@/components/upscale/compare-slider";
 
@@ -40,10 +39,45 @@ function ScaleToggle({ scale, onChange }: { scale: UpscaleFactor; onChange: (s: 
   );
 }
 
+/**
+ * Per-image switch between genuine upscaling (bigger output) and enhancement
+ * (same size, cleaner pixels). Auto-picked per image, but overridable — a mode
+ * is only disabled when its output would exceed the browser-safe size caps.
+ */
+function ModeToggle({
+  item, scale, onChange,
+}: { item: UpscaleItem; scale: UpscaleFactor; onChange: (mode: ProcessMode) => void }) {
+  const busy = item.status === "processing" || item.status === "queued";
+  return (
+    <div role="group" aria-label="Processing mode" className="inline-flex bg-surface rounded-lg border-[1.5px] border-border p-[3px] gap-0.5">
+      {(["upscale", "enhance"] as ProcessMode[]).map((mode) => {
+        const sizeErr = modeSizeError(item.natural, mode, scale);
+        return (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => onChange(mode)}
+            disabled={busy || !!sizeErr}
+            aria-pressed={item.mode === mode}
+            title={sizeErr ?? undefined}
+            className={`
+              px-3 py-1 rounded-md text-[12px] font-semibold tracking-[0.01em]
+              transition-[background-color,color] duration-150 disabled:opacity-40
+              ${item.mode === mode ? "bg-primary text-accent" : "bg-transparent text-text-muted hover:text-primary"}
+            `}
+          >
+            {mode === "upscale" ? `Upscale ${scale}×` : "Enhance"}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function UpscalePage() {
   const {
     step, items, scale, modelLoading, doneCount, processingCount,
-    loadAndUpscale, changeScale, retryItem, reset,
+    loadAndUpscale, changeScale, changeMode, retryItem, reset,
   } = useUpscale();
 
   useClipboardPaste(step === "upload" ? loadAndUpscale : null);
@@ -112,7 +146,8 @@ export default function UpscalePage() {
           <p className="text-[12px] text-text-dim text-center mt-4 leading-[1.5]">
             Runs entirely in your browser — nothing is uploaded. Images under 1000px are upscaled
             {" "}{scale}× (more pixels + sharper edges); larger images keep their size and get an
-            AI enhancement pass instead. The model loads on first use, so the first image takes a little longer.
+            AI enhancement pass instead. You can switch modes per image afterwards. The model loads
+            on first use, so the first image takes a little longer.
           </p>
         </div>
       </div>
@@ -126,7 +161,9 @@ export default function UpscalePage() {
         {/* Header row */}
         <div className="flex items-center gap-2.5 mb-1 flex-wrap justify-center">
           <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Compare</span>
-          <Badge>{current?.mode === "enhance" ? "Enhance" : `${scale}×`}</Badge>
+          {current && (
+            <ModeToggle item={current} scale={scale} onChange={(mode) => changeMode(currentIdx, mode)} />
+          )}
           {isMulti && (
             <span className="text-[13px] text-text-muted font-medium tabular-nums">
               {currentIdx + 1} of {items.length}

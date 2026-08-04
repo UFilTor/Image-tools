@@ -1,4 +1,6 @@
 import { UpscaleFactor, NaturalSize } from "./types";
+import { bufferHasAlpha, bleedTransparentEdges, sharpenInPlace, copyAlpha, extractRGB } from "./upscale-pixels";
+import type { WorkerRequest, WorkerResponse, WorkerModelKey } from "./upscale.worker";
 
 /**
  * Output-size safeguards. Upscaling is tiled so it won't blow WebGL texture limits, but the
@@ -10,14 +12,23 @@ export const MAX_OUTPUT_PIXELS = 40_000_000; // ~40 megapixels of output
 export const MAX_OUTPUT_SIDE = 10_000; // px, longest side of the output
 
 /**
- * Mode auto-switch. Super-resolution (ESRGAN) only helps when the source is genuinely
- * low-res — above this size its output is near-indistinguishable from a plain resize.
- * Larger images get MAXIM enhancement instead (same dimensions, sharper/cleaner pixels).
+ * Tiling settings. UpscalerJS docs: ESRGAN quality degrades at patch edges, and padding 2 is
+ * the documented minimum before seams become visible. Bigger patches mean fewer seams, more
+ * context per tile, and less per-tile overhead; generous padding hides the remaining seams.
+ */
+export const PATCH_SIZE = 128;
+export const PATCH_PADDING = 8;
+
+/**
+ * Mode auto-switch default. Super-resolution helps most when the source is genuinely
+ * low-res — above this size the default flips to "enhance" (same dimensions, sharper
+ * pixels). It is only a default: each image can be switched between modes afterwards
+ * as long as the output fits the size caps.
  */
 export type ProcessMode = "upscale" | "enhance";
 export const ENHANCE_THRESHOLD = 1000; // px, longest side of the source
 
-/** Pick the processing mode for a source image: small → upscale, large → enhance. */
+/** Pick the default processing mode for a source image: small → upscale, large → enhance. */
 export function pickMode(natural: NaturalSize): ProcessMode {
   return Math.max(natural.w, natural.h) >= ENHANCE_THRESHOLD ? "enhance" : "upscale";
 }
@@ -50,62 +61,199 @@ export function upscaleSizeError(natural: NaturalSize, scale: UpscaleFactor): st
   return null;
 }
 
+/** Size guard for a specific mode — used by the per-image mode toggle. */
+export function modeSizeError(natural: NaturalSize, mode: ProcessMode, scale: UpscaleFactor): string | null {
+  return mode === "upscale" ? upscaleSizeError(natural, scale) : enhanceSizeError(natural);
+}
+
 /**
  * In-browser AI upscaling via UpscalerJS (TensorFlow.js + ESRGAN).
  *
- * Everything here runs client-side: no API key, no server, no per-image cost.
- * TensorFlow.js and the model weights are heavy, so they are loaded lazily via
- * dynamic import() the first time an upscale runs. This keeps them out of the
- * bundle for the Crop / Smart Crop / Logo modes.
+ * Everything runs client-side: no API key, no server, no per-image cost.
+ * Inference runs in a web worker so the page stays responsive, which lets
+ * genuine upscaling use esrgan-thick (the highest-quality ESRGAN variant —
+ * unusable on the main thread, where it freezes the tab). Enhance mode uses
+ * esrgan-medium: its sources are much larger and thick would take minutes.
+ * If the worker can't start (old browser, bundler issue), we fall back to
+ * main-thread esrgan-medium — the pre-worker behavior.
+ *
+ * Do NOT swap in MAXIM models for enhance: they exceed WebGL texture limits
+ * or hard-freeze the main thread in-browser (tested).
  */
 
-// One Upscaler instance per model, created on first use and reused so the model
-// weights download only once. Typed loosely to avoid coupling to UpscalerJS internals.
-type InstanceKey = "x2" | "x4" | "enhance";
-const instances: Partial<Record<InstanceKey, unknown>> = {};
+interface ModelRunResult {
+  // Explicit ArrayBuffer generic: ImageData rejects Uint8ClampedArray<ArrayBufferLike>.
+  pixels: Uint8ClampedArray<ArrayBuffer>;
+  width: number;
+  height: number;
+}
 
-async function getUpscaler(key: InstanceKey): Promise<{
-  upscale: (src: string, opts: Record<string, unknown>) => Promise<string>;
-}> {
-  const existing = instances[key];
-  if (existing) return existing as never;
+/* -- Worker path ---------------------------------------------------------- */
 
-  // Register the WebGL backend, then load the engine + model package.
-  // Typed loosely via dynamic import to avoid coupling to UpscalerJS's model types.
+let worker: Worker | null = null;
+let workerBroken = false;
+let nextRequestId = 1;
+const pending = new Map<
+  number,
+  { resolve: (r: ModelRunResult) => void; reject: (e: Error) => void; onProgress?: (pct: number) => void }
+>();
+
+function failAllPending(message: string) {
+  for (const [, p] of pending) p.reject(new Error(message));
+  pending.clear();
+}
+
+function getWorker(): Worker | null {
+  if (workerBroken || typeof Worker === "undefined") return null;
+  if (worker) return worker;
+  try {
+    worker = new Worker(new URL("./upscale.worker.ts", import.meta.url));
+  } catch {
+    workerBroken = true;
+    return null;
+  }
+  worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+    const msg = e.data;
+    const p = pending.get(msg.id);
+    if (!p) return;
+    if (msg.type === "progress") {
+      p.onProgress?.(msg.pct);
+    } else if (msg.type === "done") {
+      pending.delete(msg.id);
+      p.resolve({ pixels: new Uint8ClampedArray(msg.pixels), width: msg.width, height: msg.height });
+    } else {
+      pending.delete(msg.id);
+      p.reject(new Error(msg.message));
+    }
+  };
+  // Fires when the worker script itself fails to load/parse — mark broken so
+  // every future run goes straight to the main-thread fallback.
+  worker.onerror = () => {
+    workerBroken = true;
+    failAllPending("Upscale worker failed to start");
+    worker?.terminate();
+    worker = null;
+  };
+  return worker;
+}
+
+function runInWorker(
+  w: Worker,
+  req: Omit<WorkerRequest, "id">,
+  onProgress?: (pct: number) => void,
+): Promise<ModelRunResult> {
+  return new Promise((resolve, reject) => {
+    const id = nextRequestId++;
+    pending.set(id, { resolve, reject, onProgress });
+    // The rgb buffer is cloned (not transferred) so it survives for the
+    // main-thread fallback if the worker dies mid-run.
+    w.postMessage({ id, ...req } satisfies WorkerRequest);
+  });
+}
+
+/* -- Main-thread fallback -------------------------------------------------- */
+
+type UpscalerInstance = {
+  upscale: (src: unknown, opts: Record<string, unknown>) => Promise<unknown>;
+};
+const mainInstances: Partial<Record<"x2" | "x4", UpscalerInstance>> = {};
+
+async function getMainUpscaler(key: "x2" | "x4"): Promise<UpscalerInstance> {
+  const existing = mainInstances[key];
+  if (existing) return existing;
+
   await import("@tensorflow/tfjs");
   const Upscaler = (await import("upscaler")).default as unknown as new (opts: {
     model: unknown;
-  }) => { upscale: (src: string, opts: Record<string, unknown>) => Promise<string> };
-
-  // esrgan-medium exports the scale models as named members (x2, x3, x4, x8) on the
-  // module namespace — not under `default`. Middle ESRGAN variant: better detail than
-  // -slim, much lighter/faster than -thick (which could hang the main thread on big images).
-  //
-  // Note: "enhance" mode also uses the x2 model (supersample round-trip: upscale 2x, then
-  // downscale back to the original size). We tried MAXIM enhancement models here first —
-  // they either exceed WebGL texture limits or lock the main thread for minutes, so they
-  // are not viable in the browser.
+  }) => UpscalerInstance;
+  // esrgan-medium exports the scale models as named members (x2, x3, x4, x8).
+  // Medium (not thick) on the main thread: thick hangs the tab here.
   const models = (await import("@upscalerjs/esrgan-medium")) as unknown as {
     x2: unknown;
     x4: unknown;
   };
-  const model = key === "x4" ? models.x4 : models.x2;
-  const instance = new Upscaler({ model });
-  instances[key] = instance;
-  return instance as never;
+  const instance = new Upscaler({ model: key === "x4" ? models.x4 : models.x2 });
+  mainInstances[key] = instance;
+  return instance;
+}
+
+async function runOnMainThread(
+  req: Omit<WorkerRequest, "id">,
+  onProgress?: (pct: number) => void,
+): Promise<ModelRunResult> {
+  const tf = await import("@tensorflow/tfjs");
+  const { tensorToRGBA } = await import("./upscale-tensor");
+  const upscaler = await getMainUpscaler(req.modelKey === "up-x4" ? "x4" : "x2");
+
+  const input = tf.tensor3d(new Uint8Array(req.rgb), [req.height, req.width, 3], "int32");
+  let tensor: unknown;
+  try {
+    tensor = await upscaler.upscale(input, {
+      output: "tensor",
+      patchSize: req.patchSize,
+      padding: req.padding,
+      progress: (rate: number, slice?: { dispose?: () => void }) => {
+        slice?.dispose?.();
+        onProgress?.(Math.round(rate * 100));
+      },
+    });
+  } finally {
+    input.dispose();
+  }
+
+  const t = tensor as Parameters<typeof tensorToRGBA>[1];
+  try {
+    return await tensorToRGBA(tf as unknown as Parameters<typeof tensorToRGBA>[0], t);
+  } finally {
+    t.dispose();
+  }
+}
+
+async function runModel(
+  req: Omit<WorkerRequest, "id">,
+  onProgress?: (pct: number) => void,
+): Promise<ModelRunResult> {
+  const w = getWorker();
+  if (w) {
+    try {
+      return await runInWorker(w, req, onProgress);
+    } catch {
+      // Worker died or errored — don't trust it again this session.
+      workerBroken = true;
+    }
+  }
+  return runOnMainThread(req, onProgress);
+}
+
+/* -- Public pipeline ------------------------------------------------------- */
+
+/** Decode a data URL into a canvas so we can read its pixels. */
+function decodeToCanvas(src: string): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error("Couldn't decode image"));
+    img.onload = () => {
+      const cv = document.createElement("canvas");
+      cv.width = img.naturalWidth;
+      cv.height = img.naturalHeight;
+      cv.getContext("2d")!.drawImage(img, 0, 0);
+      resolve(cv);
+    };
+    img.src = src;
+  });
 }
 
 /**
- * Upscale a data URL by the given factor.
+ * Upscale a data URL by the given factor. Returns an object URL (PNG).
  *
- * `patchSize` is required for the progress callback to fire and tiles the work so
- * a large image at 4x does not blow WebGL memory. `padding` hides seams between tiles.
+ * Output path: raw pixels from the model are assembled on a canvas and encoded
+ * via canvas.toBlob, never base64 — encoding a multi-megapixel PNG to base64
+ * happens synchronously on the main thread and briefly freezes the page.
  *
- * Output path: we request a tensor and encode via canvas.toBlob instead of UpscalerJS's
- * default base64 string. Encoding a multi-megapixel PNG to base64 happens synchronously
- * on the main thread and briefly freezes the page ("Page Unresponsive"); toBlob encodes
- * off the main thread in Chrome and an object URL avoids holding a huge base64 string.
- * Returns an object URL (PNG) of the upscaled image.
+ * Transparency: the models are RGB-only, so alpha is upscaled separately
+ * (smooth canvas resize) and re-applied. Before inference, opaque colors are
+ * bled into transparent regions so the model doesn't sharpen the hidden black
+ * matte into halos around edges.
  */
 export async function upscaleImage(
   src: string,
@@ -113,59 +261,75 @@ export async function upscaleImage(
   onProgress?: (pct: number) => void,
   mode: ProcessMode = "upscale",
 ): Promise<string> {
-  // Enhance = supersample round-trip: run the 2x model, then downscale back to the
-  // source size below. Same dimensions out, sharper and cleaner pixels.
-  const upscaler = await getUpscaler(mode === "enhance" || scale === 2 ? "x2" : "x4");
-  const tf = await import("@tensorflow/tfjs");
+  const srcCanvas = await decodeToCanvas(src);
+  const w0 = srcCanvas.width;
+  const h0 = srcCanvas.height;
+  const srcCtx = srcCanvas.getContext("2d", { willReadFrequently: true })!;
+  const srcData = srcCtx.getImageData(0, 0, w0, h0);
 
-  const tensor = (await upscaler.upscale(src, {
-    output: "tensor",
-    patchSize: 64,
-    padding: 2,
-    progress: (rate: number) => onProgress?.(Math.round(rate * 100)),
-  })) as unknown as { shape: number[]; dispose: () => void };
+  const hasAlpha = bufferHasAlpha(srcData.data);
+  if (hasAlpha) bleedTransparentEdges(srcData.data, w0, h0);
 
-  try {
-    // Clamp to valid pixel range and render asynchronously into a canvas. Some models
-    // return normalized [0,1] output — detect and denormalize so we never render black.
-    const maxVal = (await tf.tidy(() =>
-      (tensor as unknown as import("@tensorflow/tfjs").Tensor3D).max(),
-    ).data())[0];
-    const pixels = tf.tidy(() => {
-      let t = tensor as unknown as import("@tensorflow/tfjs").Tensor3D;
-      if (maxVal <= 1.5) t = t.mul(255);
-      return t.clipByValue(0, 255).cast("int32");
-    });
-    const [h, w] = tensor.shape;
-    const cv = document.createElement("canvas");
-    cv.width = w;
-    cv.height = h;
-    try {
-      await tf.browser.toPixels(pixels as import("@tensorflow/tfjs").Tensor3D, cv);
-    } finally {
-      pixels.dispose();
-    }
-    // Enhance mode: downscale the 2x intermediate back to the source size with
-    // high-quality resampling. The round-trip yields the same dimensions with
-    // sharper edges and less noise than the source.
-    let out = cv;
-    if (mode === "enhance") {
-      const down = document.createElement("canvas");
-      down.width = Math.round(w / 2);
-      down.height = Math.round(h / 2);
-      const ctx = down.getContext("2d")!;
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(cv, 0, 0, down.width, down.height);
-      out = down;
-    }
+  // Enhance = supersample round-trip: run the 2x model, then downscale back to
+  // the source size below. Same dimensions out, sharper and cleaner pixels.
+  const modelKey: WorkerModelKey =
+    mode === "enhance" ? "enh-x2" : scale === 2 ? "up-x2" : "up-x4";
+  const res = await runModel(
+    {
+      rgb: extractRGB(srcData.data).buffer as ArrayBuffer,
+      width: w0,
+      height: h0,
+      modelKey,
+      patchSize: PATCH_SIZE,
+      padding: PATCH_PADDING,
+    },
+    onProgress,
+  );
 
-    const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, "image/png"));
-    if (!blob) throw new Error("Failed to encode upscaled image");
-    return URL.createObjectURL(blob);
-  } finally {
-    tensor.dispose();
+  const cv = document.createElement("canvas");
+  cv.width = res.width;
+  cv.height = res.height;
+  const cvCtx = cv.getContext("2d")!;
+  cvCtx.putImageData(new ImageData(res.pixels, res.width, res.height), 0, 0);
+
+  let out = cv;
+  if (mode === "enhance") {
+    // Downscale the 2x intermediate back to the source size with high-quality
+    // resampling, then a mild unsharp mask — the smoothing filter otherwise
+    // gives back part of the crispness the model just added.
+    const down = document.createElement("canvas");
+    down.width = w0;
+    down.height = h0;
+    const ctx = down.getContext("2d", { willReadFrequently: true })!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(cv, 0, 0, down.width, down.height);
+    const downData = ctx.getImageData(0, 0, down.width, down.height);
+    sharpenInPlace(downData.data, down.width, down.height);
+    ctx.putImageData(downData, 0, 0);
+    out = down;
   }
+
+  if (hasAlpha) {
+    // Re-apply transparency: scale the original alpha channel to the output
+    // size (bilinear, via drawImage) and copy it onto the result. For enhance
+    // mode the dimensions match, so this is the original alpha verbatim.
+    const outCtx = out.getContext("2d", { willReadFrequently: true })!;
+    const outData = outCtx.getImageData(0, 0, out.width, out.height);
+    const alphaCv = document.createElement("canvas");
+    alphaCv.width = out.width;
+    alphaCv.height = out.height;
+    const alphaCtx = alphaCv.getContext("2d", { willReadFrequently: true })!;
+    alphaCtx.imageSmoothingEnabled = true;
+    alphaCtx.imageSmoothingQuality = "high";
+    alphaCtx.drawImage(srcCanvas, 0, 0, out.width, out.height);
+    copyAlpha(outData.data, alphaCtx.getImageData(0, 0, out.width, out.height).data);
+    outCtx.putImageData(outData, 0, 0);
+  }
+
+  const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("Failed to encode upscaled image");
+  return URL.createObjectURL(blob);
 }
 
 /** Decode a data URL and resolve its pixel dimensions. */

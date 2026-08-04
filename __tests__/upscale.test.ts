@@ -5,6 +5,7 @@ import {
   upscaleSizeError,
   pickMode,
   enhanceSizeError,
+  modeSizeError,
   ENHANCE_THRESHOLD,
   MAX_OUTPUT_PIXELS,
   MAX_OUTPUT_SIDE,
@@ -31,6 +32,19 @@ describe("enhanceSizeError", () => {
     // 4000x4000 -> 8000x8000 intermediate = 64MP > 40MP cap
     const msg = enhanceSizeError({ w: 4000, h: 4000 });
     expect(msg).toContain("Too large to enhance");
+  });
+});
+
+describe("modeSizeError", () => {
+  it("allows upscaling a medium image that auto-defaults to enhance", () => {
+    // 1600px source: pickMode says enhance, but 2x output (3200px) fits the caps,
+    // so the mode toggle must offer Upscale.
+    expect(pickMode({ w: 1600, h: 1200 })).toBe("enhance");
+    expect(modeSizeError({ w: 1600, h: 1200 }, "upscale", 2)).toBeNull();
+  });
+  it("routes to the right guard per mode", () => {
+    expect(modeSizeError({ w: 4000, h: 4000 }, "upscale", 4)).toContain("Too large for 4×");
+    expect(modeSizeError({ w: 4000, h: 4000 }, "enhance", 2)).toContain("Too large to enhance");
   });
 });
 
