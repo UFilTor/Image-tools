@@ -1,33 +1,69 @@
 import { CropRect, NaturalSize, DisplaySize } from "./types";
+import { EDITOR_INSETS } from "./constants";
+
+export interface LoadedImage {
+  /** Object URL for the file. Revoke with `revokeSrc` when the image is discarded. */
+  src: string;
+  name: string;
+  mime: string;
+  nat: NaturalSize;
+}
 
 /**
- * Read a single File as a data URL and decode it as an Image.
- * Resolves to null if the file is empty, the FileReader fails, or the image can't decode.
- * Callers can `Promise.all(files.map(readFileAsImage))` and filter nulls.
+ * Wrap a File in an object URL and decode it once to read its dimensions.
+ * Object URLs (not data URLs) so a batch of large files doesn't sit in memory as
+ * base64 strings and get re-decoded from base64 on every use.
+ * Resolves to null if the file is empty or the image can't decode.
  */
-export function readFileAsImage(file: File): Promise<{ src: string; name: string; nat: NaturalSize } | null> {
+export function readFileAsImage(file: File): Promise<LoadedImage | null> {
   return new Promise((resolve) => {
     if (!file || file.size === 0) {
       resolve(null);
       return;
     }
-    const reader = new FileReader();
-    reader.onerror = () => resolve(null);
-    reader.onload = (e) => {
-      const src = e.target?.result;
-      if (typeof src !== "string" || src.length < 32) {
+    const src = URL.createObjectURL(file);
+    const img = new Image();
+    img.onerror = () => {
+      URL.revokeObjectURL(src);
+      resolve(null);
+    };
+    img.onload = () => {
+      if (!img.naturalWidth || !img.naturalHeight) {
+        URL.revokeObjectURL(src);
         resolve(null);
         return;
       }
-      const img = new Image();
-      img.onerror = () => resolve(null);
-      img.onload = () => {
-        if (!img.width || !img.height) { resolve(null); return; }
-        resolve({ src, name: file.name, nat: { w: img.width, h: img.height } });
-      };
-      img.src = src;
+      resolve({ src, name: file.name, mime: file.type, nat: { w: img.naturalWidth, h: img.naturalHeight } });
     };
-    reader.readAsDataURL(file);
+    img.src = src;
+  });
+}
+
+/** Release an object URL created by `readFileAsImage` or `canvasToObjectUrl`. Safe on any string. */
+export function revokeSrc(src: string | null | undefined): void {
+  if (src && src.startsWith("blob:")) URL.revokeObjectURL(src);
+}
+
+/** Load any image URL into an HTMLImageElement. */
+export function loadImageEl(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("Couldn't decode image"));
+    el.src = src;
+  });
+}
+
+/** Encode a canvas as an object URL (PNG). Encoding runs off the main thread, unlike toDataURL. */
+export function canvasToObjectUrl(canvas: HTMLCanvasElement, type = "image/png"): Promise<string> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Couldn't encode image"));
+        return;
+      }
+      resolve(URL.createObjectURL(blob));
+    }, type);
   });
 }
 
@@ -47,40 +83,70 @@ export function dispSize(
   return { dw: Math.round(nw * s), dh: Math.round(nh * s) };
 }
 
-/**
- * Downscale a data URL to fit within `maxDim` on the longest side and re-encode as JPEG.
- * Used to keep payloads under Anthropic's 5MB inline-image limit while preserving enough
- * detail for focal detection.
- */
-export function downscaleForAI(src: string, maxDim = 2048, quality = 0.85): Promise<{ src: string; mime: string }> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const longest = Math.max(img.naturalWidth, img.naturalHeight);
-        if (longest <= maxDim && src.startsWith("data:image/jpeg")) {
-          resolve({ src, mime: "image/jpeg" });
-          return;
-        }
-        const scale = Math.min(1, maxDim / longest);
-        const w = Math.round(img.naturalWidth * scale);
-        const h = Math.round(img.naturalHeight * scale);
-        const cv = document.createElement("canvas");
-        cv.width = w;
-        cv.height = h;
-        const ctx = cv.getContext("2d")!;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
-        const dataUrl = cv.toDataURL("image/jpeg", quality);
-        resolve({ src: dataUrl, mime: "image/jpeg" });
-      } catch {
-        resolve({ src, mime: "image/jpeg" });
-      }
-    };
-    img.onerror = () => resolve({ src, mime: "image/jpeg" });
-    img.src = src;
+/** Display size for the crop editor given the current viewport. */
+export function editorDispSize(nat: NaturalSize): DisplaySize {
+  const vw = typeof window !== "undefined" ? window.innerWidth - EDITOR_INSETS.x : 800;
+  const vh = typeof window !== "undefined" ? window.innerHeight - EDITOR_INSETS.y : 600;
+  return dispSize(nat.w, nat.h, Math.min(vw, nat.w), Math.min(vh, nat.h));
+}
+
+/** Scale a display-space crop rect when the display size changes (e.g. window resize). */
+export function rescaleCrop(crop: CropRect, from: DisplaySize, to: DisplaySize): CropRect {
+  if (!from.dw || !from.dh) return crop;
+  const sx = to.dw / from.dw;
+  const sy = to.dh / from.dh;
+  return {
+    x: Math.round(crop.x * sx),
+    y: Math.round(crop.y * sy),
+    w: Math.round(crop.w * sx),
+    h: Math.round(crop.h * sy),
+  };
+}
+
+/** Anthropic's inline-image cap. Anything under it that already fits `maxDim` is sent as-is. */
+const AI_MAX_BYTES = 5 * 1024 * 1024;
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onerror = () => rej(new Error("Couldn't read encoded image"));
+    r.onload = () => res(r.result as string);
+    r.readAsDataURL(blob);
   });
+}
+
+/**
+ * Prepare an image for the focal-detection API: fit within `maxDim` on the longest side
+ * (the vision model works at ~1500px, so more is wasted upload) and stay under the 5 MB
+ * inline cap. A JPEG/PNG/WebP that already fits is sent untouched (no decode, no re-encode);
+ * everything else is resampled with high-quality smoothing and encoded asynchronously.
+ */
+export async function downscaleForAI(src: string, maxDim = 2048, quality = 0.85): Promise<{ src: string; mime: string }> {
+  const img = await loadImageEl(src);
+  const longest = Math.max(img.naturalWidth, img.naturalHeight);
+
+  if (longest <= maxDim && src.startsWith("blob:")) {
+    const blob = await fetch(src).then((r) => r.blob());
+    if (["image/jpeg", "image/png", "image/webp"].includes(blob.type) && blob.size <= AI_MAX_BYTES) {
+      return { src: await blobToDataUrl(blob), mime: blob.type };
+    }
+  }
+
+  const scale = Math.min(1, maxDim / longest);
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w;
+  cv.height = h;
+  const ctx = cv.getContext("2d")!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, "image/jpeg", quality));
+  if (!blob) throw new Error("Couldn't encode image for analysis");
+  return { src: await blobToDataUrl(blob), mime: "image/jpeg" };
 }
 
 export function cropToBlob(

@@ -225,9 +225,25 @@ async function runModel(
   return runOnMainThread(req, onProgress);
 }
 
+/**
+ * Release the worker, its WebGL context and any main-thread model instances. tfjs plus the
+ * loaded ESRGAN weights are hundreds of MB; `useUpscale` calls this after the queue has been
+ * idle for a while. Everything lazily re-initialises on the next run.
+ */
+export function disposeUpscaler(): void {
+  failAllPending("Upscaler disposed");
+  worker?.terminate();
+  worker = null;
+  for (const key of Object.keys(mainInstances) as ("x2" | "x4")[]) {
+    const inst = mainInstances[key] as { dispose?: () => void } | undefined;
+    inst?.dispose?.();
+    delete mainInstances[key];
+  }
+}
+
 /* -- Public pipeline ------------------------------------------------------- */
 
-/** Decode a data URL into a canvas so we can read its pixels. */
+/** Decode an image URL into a canvas so we can read its pixels. */
 function decodeToCanvas(src: string): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -244,7 +260,7 @@ function decodeToCanvas(src: string): Promise<HTMLCanvasElement> {
 }
 
 /**
- * Upscale a data URL by the given factor. Returns an object URL (PNG).
+ * Upscale an image URL by the given factor. Returns an object URL (PNG).
  *
  * Output path: raw pixels from the model are assembled on a canvas and encoded
  * via canvas.toBlob, never base64 — encoding a multi-megapixel PNG to base64

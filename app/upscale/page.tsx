@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useUpscale } from "@/hooks/use-upscale";
+import { useToolState } from "@/components/tool-state-provider";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { ACCEPTED_FORMATS_LABEL } from "@/lib/constants";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useDownload } from "@/hooks/use-download";
 import { DropZone } from "@/components/ui/drop-zone";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
-import { dlDataUrl, dlAllUpscaled } from "@/lib/download";
+import { dlUrl, dlAllUpscaled } from "@/lib/download";
 import { upscaleFilename, modeSizeError, ProcessMode } from "@/lib/upscale";
 import { UpscaleFactor, UpscaleItem } from "@/lib/types";
 import { DlIcon, RetryIcon } from "@/components/icons";
@@ -77,34 +79,30 @@ function ModeToggle({
 export default function UpscalePage() {
   const {
     step, items, scale, modelLoading, doneCount, processingCount,
-    loadAndUpscale, changeScale, changeMode, retryItem, reset,
-  } = useUpscale();
+    loadAndUpscale, changeScale, changeMode, retryItem, reset, reportLoadError,
+    currentIdx, navigateTo,
+  } = useToolState().upscale;
 
-  useClipboardPaste(step === "upload" ? loadAndUpscale : null);
+  useClipboardPaste(step === "upload" ? loadAndUpscale : null, reportLoadError);
+  const dl = useDownload();
   const resetConfirm = useConfirm({ onConfirm: reset, count: items.length, threshold: 1 });
-  const [currentIdx, setCurrentIdx] = useState(0);
   const [zoom, setZoom] = useState<ZoomMode>("full");
-
-  // Keep the index valid when the batch shrinks or resets (convergent adjust-during-render).
-  if (currentIdx !== 0 && currentIdx >= items.length) setCurrentIdx(0);
 
   const current = items[currentIdx] || null;
   const isMulti = items.length > 1;
   const isDone = current?.status === "done" && !!current.result;
 
-  const navigateTo = (idx: number) => {
-    if (idx < 0 || idx >= items.length) return;
-    setCurrentIdx(idx);
-  };
-
   const downloadCurrent = () => {
-    if (current?.status === "done" && current.result) {
-      dlDataUrl(current.result, upscaleFilename(current.name, scale, current.mode));
-    }
+    if (!current?.result) return;
+    const { result, name, mode } = current;
+    dl.run(async () => {
+      dlUrl(result, upscaleFilename(name, scale, mode));
+      return { ok: true };
+    });
   };
 
   useKeyboardShortcuts({
-    onEnter: step === "processing" && isDone ? downloadCurrent : undefined,
+    onEnter: step === "processing" && isDone && !dl.busy ? downloadCurrent : undefined,
     onEscape: step === "processing" ? resetConfirm.fire : undefined,
     onLeft: isMulti && step === "processing" ? () => navigateTo(currentIdx - 1) : undefined,
     onRight: isMulti && step === "processing" ? () => navigateTo(currentIdx + 1) : undefined,
@@ -137,7 +135,7 @@ export default function UpscalePage() {
                   Drop images to upscale {scale}×
                 </div>
                 <div className="text-[13px] text-text-muted">
-                  or click to browse — PNG, JPG, WebP, AVIF, HEIC, SVG
+                  or click to browse — {ACCEPTED_FORMATS_LABEL}
                 </div>
               </>
             )}
@@ -296,15 +294,16 @@ export default function UpscalePage() {
           >
             New batch
           </ConfirmButton>
-          <Button variant="primary" onClick={downloadCurrent} disabled={!isDone}>
+          <Button variant="primary" onClick={downloadCurrent} disabled={!isDone || dl.busy}>
             <DlIcon /> Download
           </Button>
           {isMulti && (
-            <Button variant="primary" onClick={() => dlAllUpscaled(items, scale)} disabled={doneCount === 0}>
-              <DlIcon /> Download all
+            <Button variant="primary" onClick={() => dl.run(() => dlAllUpscaled(items, scale))} disabled={doneCount === 0 || dl.busy}>
+              <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
             </Button>
           )}
         </div>
+        {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}
       </div>
     </div>
   );

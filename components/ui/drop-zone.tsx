@@ -1,9 +1,7 @@
 "use client";
 
 import { useRef, useState, ReactNode } from "react";
-import { isAcceptedFile, MAX_FILE_SIZE } from "@/lib/constants";
-import { convertHeicFiles, isHeicFile } from "@/lib/heic-convert";
-import { convertSvgFiles, isSvgFile } from "@/lib/svg-convert";
+import { prepareFiles, needsConversion } from "@/lib/file-intake";
 import { getPasteShortcut } from "@/lib/platform";
 
 interface DropZoneProps {
@@ -18,42 +16,16 @@ export function DropZone({ onFiles, multiple = false, children }: DropZoneProps)
   const [converting, setConverting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const validate = (files: FileList): FileList | null => {
-    setError(null);
-    for (const file of Array.from(files)) {
-      if (!isAcceptedFile(file)) {
-        setError(`Unsupported format: ${file.name}. Use PNG, JPG, WebP, AVIF, or HEIC.`);
-        return null;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        setError(`${file.name} exceeds 20MB limit.`);
-        return null;
-      }
-    }
-    return files;
-  };
-
   const processFiles = async (files: FileList) => {
-    const valid = validate(files);
-    if (!valid) return;
-
-    const arr = Array.from(valid);
-    const needsHeic = arr.some(isHeicFile);
-    const needsSvg = arr.some(isSvgFile);
-    if (needsHeic || needsSvg) {
-      setConverting(true);
-      try {
-        let out: FileList = valid;
-        if (needsHeic) out = await convertHeicFiles(Array.from(out));
-        if (needsSvg) out = await convertSvgFiles(Array.from(out));
-        onFiles(out);
-      } catch {
-        setError(needsHeic ? "Failed to convert HEIC file. Try converting it to JPG first." : "Failed to convert SVG file.");
-      } finally {
-        setConverting(false);
-      }
-    } else {
-      onFiles(valid);
+    setError(null);
+    const converting = needsConversion(files);
+    if (converting) setConverting(true);
+    try {
+      const { files: ready, error: err } = await prepareFiles(files);
+      if (err) setError(err);
+      if (ready) onFiles(ready);
+    } finally {
+      if (converting) setConverting(false);
     }
   };
 

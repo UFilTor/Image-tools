@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { RATIOS, STORAGE_KEYS } from "@/lib/constants";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
+import { isOverlayOpen } from "@/lib/overlay-state";
 
 interface RatioPickerProps {
   onPick: (value: number | null, label: string) => void;
@@ -11,18 +12,24 @@ interface RatioPickerProps {
   backLabel?: string;
 }
 
+/** Last picked ratio label from localStorage, read hydration-safely (server always sees the default). */
+const DEFAULT_RATIO = "Square";
+const subscribeStorage = (cb: () => void) => {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+};
+const readSavedRatio = () => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.lastRatio);
+    return saved && RATIOS.some((r) => r.label === saved) ? saved : DEFAULT_RATIO;
+  } catch {
+    return DEFAULT_RATIO;
+  }
+};
+
 export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back" }: RatioPickerProps) {
   const [hov, setHov] = useState<string | null>(null);
-  const [highlighted, setHighlighted] = useState<string>("Square");
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.lastRatio);
-      if (saved && RATIOS.some((r) => r.label === saved)) {
-        setHighlighted(saved);
-      }
-    } catch {}
-  }, []);
+  const highlighted = useSyncExternalStore(subscribeStorage, readSavedRatio, () => DEFAULT_RATIO);
 
   const handlePick = useCallback((value: number | null, label: string) => {
     try {
@@ -34,6 +41,7 @@ export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isOverlayOpen()) return;
       const idx = parseInt(e.key, 10) - 1;
       if (idx >= 0 && idx < RATIOS.length) {
         e.preventDefault();

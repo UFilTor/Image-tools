@@ -1,50 +1,20 @@
 import { CropRect, NaturalSize, DisplaySize, MultiCropItem, CropQueueItem, UpscaleItem, UpscaleFactor, ExtendQueueItem } from "./types";
-import { cropToBlob, cropFilename } from "./image-utils";
+import { cropToBlob, cropFilename, loadImageEl } from "./image-utils";
 import { upscaleFilename } from "./upscale";
-import { extendGeometry, renderExtended, extendFilename, loadImageEl, ExtendFill } from "./extend-utils";
+import { extendGeometry, renderExtended, extendFilename, extendSizeError, ExtendFill } from "./extend-utils";
 
-export function dlCrop(
-  src: string,
-  nat: NaturalSize,
-  disp: DisplaySize,
-  crop: CropRect,
-  fname: string,
-): void {
-  cropToBlob(src, nat, disp, crop).then((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.download = fname;
-    a.href = url;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  });
+export interface DownloadResult {
+  ok: boolean;
+  error?: string;
 }
 
-export async function dlAll(items: MultiCropItem[]): Promise<void> {
-  const ready = items.filter((it) => it.status === "done" && it.crop);
-  if (!ready.length) return;
+const FAIL: DownloadResult = { ok: false, error: "Couldn't prepare that download. Try again." };
 
-  const JSZip = (await import("jszip")).default;
-  const zip = new JSZip();
-
-  await Promise.all(
-    ready.map(async (it) => {
-      try {
-        const blob = await cropToBlob(it.src, it.natural, it.disp, it.crop!);
-        if (blob) zip.file(cropFilename(it.name), blob);
-      } catch {
-        // skip individual failures
-      }
-    }),
-  );
-
-  const zipBlob = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(zipBlob);
+/** Click an anchor for a blob and revoke the URL afterwards. */
+function triggerDownload(blob: Blob, fname: string): void {
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.download = "crops.zip";
+  a.download = fname;
   a.href = url;
   document.body.appendChild(a);
   a.click();
@@ -52,36 +22,8 @@ export async function dlAll(items: MultiCropItem[]): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export async function dlAllCropQueue(items: CropQueueItem[]): Promise<void> {
-  if (!items.length) return;
-
-  const JSZip = (await import("jszip")).default;
-  const zip = new JSZip();
-
-  await Promise.all(
-    items.map(async (it) => {
-      try {
-        const blob = await cropToBlob(it.src, it.natural, it.disp, it.crop);
-        if (blob) zip.file(cropFilename(it.name), blob);
-      } catch {
-        // skip individual failures
-      }
-    }),
-  );
-
-  const zipBlob = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(zipBlob);
-  const a = document.createElement("a");
-  a.download = "crops.zip";
-  a.href = url;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-/** Download a data URL directly (used by upscale results). */
-export function dlDataUrl(src: string, fname: string): void {
+/** Download a URL (blob or data) as-is. */
+export function dlUrl(src: string, fname: string): void {
   const a = document.createElement("a");
   a.download = fname;
   a.href = src;
@@ -90,81 +32,132 @@ export function dlDataUrl(src: string, fname: string): void {
   document.body.removeChild(a);
 }
 
-export async function dlAllUpscaled(items: UpscaleItem[], scale: UpscaleFactor): Promise<void> {
-  const ready = items.filter((it) => it.status === "done" && it.result);
-  if (!ready.length) return;
-
-  const JSZip = (await import("jszip")).default;
-  const zip = new JSZip();
-
-  await Promise.all(
-    ready.map(async (it) => {
-      try {
-        const blob = await (await fetch(it.result!)).blob();
-        zip.file(upscaleFilename(it.name, scale, it.mode), blob);
-      } catch {
-        // skip individual failures
-      }
-    }),
-  );
-
-  const zipBlob = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(zipBlob);
-  const a = document.createElement("a");
-  a.download = "upscaled.zip";
-  a.href = url;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+/**
+ * Zip a set of async-produced blobs and download the archive. Entries that fail are skipped;
+ * the result reports how many made it so callers can tell the user.
+ */
+async function zipAndDownload(
+  entries: { name: string; blob: () => Promise<Blob | null> }[],
+  zipName: string,
+): Promise<DownloadResult> {
+  if (!entries.length) return { ok: false, error: "Nothing to download yet." };
+  try {
+    const JSZip = (await import("jszip")).default;
+    const zip = new JSZip();
+    let added = 0;
+    await Promise.all(
+      entries.map(async (e) => {
+        try {
+          const blob = await e.blob();
+          if (blob) {
+            zip.file(e.name, blob);
+            added++;
+          }
+        } catch {
+          // skip individual failures, reported below
+        }
+      }),
+    );
+    if (!added) return FAIL;
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    triggerDownload(zipBlob, zipName);
+    const skipped = entries.length - added;
+    return skipped ? { ok: true, error: `Skipped ${skipped} image${skipped === 1 ? "" : "s"} that couldn't be exported.` } : { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error && err.message ? `Download failed: ${err.message}` : FAIL.error };
+  }
 }
 
-export async function dlAllExtended(
+export async function dlCrop(
+  src: string,
+  nat: NaturalSize,
+  disp: DisplaySize,
+  crop: CropRect,
+  fname: string,
+): Promise<DownloadResult> {
+  const blob = await cropToBlob(src, nat, disp, crop);
+  if (!blob) return FAIL;
+  triggerDownload(blob, fname);
+  return { ok: true };
+}
+
+export function dlAll(items: MultiCropItem[]): Promise<DownloadResult> {
+  const ready = items.filter((it) => it.status === "done" && it.crop);
+  return zipAndDownload(
+    ready.map((it) => ({ name: cropFilename(it.name), blob: () => cropToBlob(it.src, it.natural, it.disp, it.crop!) })),
+    "crops.zip",
+  );
+}
+
+export function dlAllCropQueue(items: CropQueueItem[]): Promise<DownloadResult> {
+  return zipAndDownload(
+    items.map((it) => ({ name: cropFilename(it.name), blob: () => cropToBlob(it.src, it.natural, it.disp, it.crop) })),
+    "crops.zip",
+  );
+}
+
+export function dlAllUpscaled(items: UpscaleItem[], scale: UpscaleFactor): Promise<DownloadResult> {
+  const ready = items.filter((it) => it.status === "done" && it.result);
+  return zipAndDownload(
+    ready.map((it) => ({
+      name: upscaleFilename(it.name, scale, it.mode),
+      blob: async () => (await fetch(it.result!)).blob(),
+    })),
+    "upscaled.zip",
+  );
+}
+
+export async function dlExtended(
+  item: ExtendQueueItem,
+  ratio: number | null,
+  padding: number,
+  fill: ExtendFill,
+): Promise<DownloadResult> {
+  const geo = extendGeometry(item.natural, ratio, padding);
+  const sizeErr = extendSizeError(geo);
+  if (sizeErr) return { ok: false, error: sizeErr };
+  try {
+    const img = await loadImageEl(item.src);
+    const cv = renderExtended(img, geo, fill);
+    const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, "image/png"));
+    if (!blob) return FAIL;
+    triggerDownload(blob, extendFilename(item.name));
+    return { ok: true };
+  } catch {
+    return FAIL;
+  }
+}
+
+export function dlAllExtended(
   items: ExtendQueueItem[],
   ratio: number | null,
   padding: number,
   fill: ExtendFill,
-): Promise<void> {
-  if (!items.length) return;
-
-  const JSZip = (await import("jszip")).default;
-  const zip = new JSZip();
-
-  await Promise.all(
-    items.map(async (it) => {
-      try {
-        const img = await loadImageEl(it.src);
+): Promise<DownloadResult> {
+  return zipAndDownload(
+    items.map((it) => ({
+      name: extendFilename(it.name),
+      blob: async () => {
         const geo = extendGeometry(it.natural, ratio, padding);
+        if (extendSizeError(geo)) return null;
+        const img = await loadImageEl(it.src);
         const cv = renderExtended(img, geo, fill);
-        const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, "image/png"));
-        if (blob) zip.file(extendFilename(it.name), blob);
-      } catch {
-        // skip individual failures
-      }
-    }),
+        return new Promise<Blob | null>((res) => cv.toBlob(res, "image/png"));
+      },
+    })),
+    "extended.zip",
   );
-
-  const zipBlob = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(zipBlob);
-  const a = document.createElement("a");
-  a.download = "extended.zip";
-  a.href = url;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function dlCanvas(canvas: HTMLCanvasElement, fname: string): void {
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.download = fname;
-    a.href = url;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }, "image/png");
+export function dlCanvas(canvas: HTMLCanvasElement, fname: string): Promise<DownloadResult> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        resolve(FAIL);
+        return;
+      }
+      triggerDownload(blob, fname);
+      resolve({ ok: true });
+    }, "image/png");
+  });
 }

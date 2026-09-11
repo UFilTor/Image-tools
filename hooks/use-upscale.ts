@@ -2,17 +2,25 @@
 
 import { useState, useCallback, useRef } from "react";
 import { UpscaleItem, UpscaleFactor } from "@/lib/types";
-import { readFileAsImage } from "@/lib/image-utils";
-import { isAcceptedFile } from "@/lib/constants";
-import { upscaleImage, measureDataUrl, modeSizeError, pickMode, ProcessMode } from "@/lib/upscale";
+import { revokeSrc } from "@/lib/image-utils";
+import { loadImageFiles } from "@/lib/load-images";
+import { upscaleImage, measureDataUrl, modeSizeError, pickMode, disposeUpscaler, ProcessMode } from "@/lib/upscale";
 
 type UpscaleStep = "upload" | "processing";
 
-/** Release object URLs held by previous results so discarded blobs can be GC'd. */
+/** Release the worker and model weights after this long without work. */
+const IDLE_DISPOSE_MS = 3 * 60_000;
+
+interface Job {
+  idx: number;
+  item: UpscaleItem;
+  factor: UpscaleFactor;
+  gen: number;
+}
+
+/** Release object URLs held by results so discarded blobs can be GC'd. */
 function revokeResults(items: UpscaleItem[]) {
-  for (const it of items) {
-    if (it.result?.startsWith("blob:")) URL.revokeObjectURL(it.result);
-  }
+  for (const it of items) revokeSrc(it.result);
 }
 
 export function useUpscale() {
@@ -21,182 +29,158 @@ export function useUpscale() {
   const [scale, setScale] = useState<UpscaleFactor>(2);
   const [modelLoading, setModelLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [currentIdx, setCurrentIdx] = useState(0);
+
+  // One queue for every run (batch, retry, mode change). tfjs runs on a single GPU
+  // context, so concurrent upscales contend and can OOM; the pump serializes them.
   const runGen = useRef(0);
+  const jobs = useRef<Job[]>([]);
+  const pumping = useRef(false);
 
-  // Process the queue one image at a time. tfjs runs on a single GPU context, so
-  // concurrent upscales would contend and can OOM — serialize the compute.
-  const runBatch = useCallback(async (queue: UpscaleItem[], factor: UpscaleFactor) => {
-    const myGen = ++runGen.current;
-    setModelLoading(true);
-    for (let idx = 0; idx < queue.length; idx++) {
-      if (myGen !== runGen.current) return;
+  // State lives for the whole session (see ToolStateProvider), so the worker and model
+  // weights are released after the queue has been idle for a while rather than on unmount.
+  const idleTimer = useRef<number | null>(null);
+  const cancelIdleDispose = () => {
+    if (idleTimer.current) window.clearTimeout(idleTimer.current);
+    idleTimer.current = null;
+  };
+  const scheduleIdleDispose = () => {
+    cancelIdleDispose();
+    idleTimer.current = window.setTimeout(() => disposeUpscaler(), IDLE_DISPOSE_MS);
+  };
 
-      // Guard: refuse outputs that would be too large for the browser to assemble.
-      const sizeErr = modeSizeError(queue[idx].natural, queue[idx].mode, factor);
-      if (sizeErr) {
-        setItems((prev) => {
-          if (myGen !== runGen.current) return prev;
-          const next = [...prev];
-          next[idx] = { ...next[idx], status: "error", progress: 0, error: sizeErr };
-          return next;
-        });
-        continue;
-      }
-
-      setItems((prev) => {
-        if (myGen !== runGen.current) return prev;
-        const next = [...prev];
-        next[idx] = { ...next[idx], status: "processing", progress: 0 };
-        return next;
-      });
-      try {
-        const result = await upscaleImage(queue[idx].src, factor, (pct) => {
-          if (myGen !== runGen.current) return;
-          setItems((prev) => {
-            if (myGen !== runGen.current) return prev;
-            const next = [...prev];
-            if (next[idx]?.status === "processing") next[idx] = { ...next[idx], progress: pct };
-            return next;
-          });
-        }, queue[idx].mode);
-        if (myGen !== runGen.current) return;
-        setModelLoading(false);
-        const resultNatural = await measureDataUrl(result);
-        if (myGen !== runGen.current) return;
-        setItems((prev) => {
-          if (myGen !== runGen.current) return prev;
-          const next = [...prev];
-          next[idx] = { ...next[idx], status: "done", progress: 100, result, resultNatural };
-          return next;
-        });
-      } catch (err) {
-        if (myGen !== runGen.current) return;
-        setModelLoading(false);
-        setItems((prev) => {
-          if (myGen !== runGen.current) return prev;
-          const next = [...prev];
-          next[idx] = {
-            ...next[idx],
-            status: "error",
-            error: err instanceof Error ? err.message : "Upscaling failed",
-          };
-          return next;
-        });
-      }
-    }
-    if (myGen === runGen.current) setModelLoading(false);
+  const patch = useCallback((idx: number, gen: number, update: Partial<UpscaleItem> | ((it: UpscaleItem) => Partial<UpscaleItem>)) => {
+    setItems((prev) => {
+      if (gen !== runGen.current || !prev[idx]) return prev;
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...(typeof update === "function" ? update(next[idx]) : update) };
+      return next;
+    });
   }, []);
+
+  const pump = useCallback(async () => {
+    if (pumping.current) return;
+    pumping.current = true;
+    cancelIdleDispose();
+    setModelLoading(true);
+    try {
+      while (jobs.current.length) {
+        const job = jobs.current.shift()!;
+        const { idx, item, factor, gen } = job;
+        if (gen !== runGen.current) continue;
+
+        const sizeErr = modeSizeError(item.natural, item.mode, factor);
+        if (sizeErr) {
+          patch(idx, gen, { status: "error", progress: 0, error: sizeErr });
+          continue;
+        }
+        patch(idx, gen, { status: "processing", progress: 0 });
+
+        let result: string | null = null;
+        try {
+          result = await upscaleImage(item.src, factor, (pct) => {
+            patch(idx, gen, (it) => (it.status === "processing" ? { progress: pct } : {}));
+          }, item.mode);
+          if (gen !== runGen.current) {
+            // Cancelled mid-run (reset / scale change): free the blob we just made.
+            revokeSrc(result);
+            continue;
+          }
+          const resultNatural = await measureDataUrl(result);
+          if (gen !== runGen.current) {
+            revokeSrc(result);
+            continue;
+          }
+          patch(idx, gen, { status: "done", progress: 100, result, resultNatural });
+        } catch (err) {
+          revokeSrc(result);
+          patch(idx, gen, { status: "error", error: err instanceof Error ? err.message : "Upscaling failed" });
+        }
+      }
+    } finally {
+      pumping.current = false;
+      setModelLoading(false);
+      scheduleIdleDispose();
+    }
+  }, [patch]);
+
+  const enqueue = useCallback((newJobs: Omit<Job, "gen">[]) => {
+    const gen = runGen.current;
+    jobs.current.push(...newJobs.map((j) => ({ ...j, gen })));
+    void pump();
+  }, [pump]);
 
   const loadAndUpscale = useCallback(async (files: FileList) => {
     setLoadError(null);
-    const arr = Array.from(files).filter((f) => isAcceptedFile(f));
-    if (!arr.length) return;
-
-    const results = await Promise.all(arr.map(readFileAsImage));
-    const ok: UpscaleItem[] = [];
-    arr.forEach((f, i) => {
-      const r = results[i];
-      if (r) {
-        ok.push({
-          src: r.src, name: r.name, natural: r.nat,
-          mode: pickMode(r.nat),
-          status: "queued", progress: 0, result: null, resultNatural: null,
-        });
-      }
-    });
-    const failed = arr.length - ok.length;
-    if (!ok.length) {
-      setLoadError(`Couldn't read ${arr.length === 1 ? "that image" : "any of those images"}. Try a different file.`);
-      return;
-    }
-    if (failed > 0) setLoadError(`Skipped ${failed} unreadable file${failed === 1 ? "" : "s"}.`);
-
+    const { images, error } = await loadImageFiles(files);
+    if (error) setLoadError(error);
+    if (!images.length) return;
+    const ok: UpscaleItem[] = images.map((r) => ({
+      src: r.src, name: r.name, natural: r.nat,
+      mode: pickMode(r.nat),
+      status: "queued", progress: 0, result: null, resultNatural: null,
+    }));
     setItems(ok);
+    setCurrentIdx(0);
     setStep("processing");
-    runBatch(ok, scale);
-  }, [scale, runBatch]);
+    enqueue(ok.map((item, idx) => ({ idx, item, factor: scale })));
+  }, [scale, enqueue]);
 
-  // Re-run the whole queue at a new scale (resets results).
+  // Re-run at a new scale. Enhance ignores the factor, so those results are kept as-is.
   const changeScale = useCallback((factor: UpscaleFactor) => {
     setScale(factor);
     if (factor === scale || !items.length) return;
-    revokeResults(items);
-    const reset = items.map((it) => ({
-      ...it, status: "queued" as const, progress: 0, result: null, resultNatural: null, error: undefined,
-    }));
+    runGen.current++;
+    jobs.current = [];
+    // Finished enhance results are kept (enhance ignores the factor); everything else,
+    // including enhance items that were still queued or in flight, is re-queued.
+    const reset = items.map((it) => {
+      if (it.mode === "enhance" && it.status === "done") return it;
+      revokeSrc(it.result);
+      return { ...it, status: "queued" as const, progress: 0, result: null, resultNatural: null, error: undefined };
+    });
     setItems(reset);
-    runBatch(reset, factor);
-  }, [scale, items, runBatch]);
+    enqueue(reset.flatMap((item, idx) => (item.status === "queued" ? [{ idx, item, factor }] : [])));
+  }, [scale, items, enqueue]);
 
-  // Re-run one item (used by retry and the per-image mode toggle). `item` carries
-  // the mode to run with; state at `idx` is reset first.
+  // Queue one item (retry or per-image mode toggle); runs after whatever is in flight.
   const runSingle = useCallback((idx: number, item: UpscaleItem) => {
-    if (item.result?.startsWith("blob:")) URL.revokeObjectURL(item.result);
-
-    // Guard: same output-size safeguard as the batch runner.
-    const sizeErr = modeSizeError(item.natural, item.mode, scale);
-    if (sizeErr) {
-      setItems((prev) => {
-        const next = [...prev];
-        next[idx] = { ...item, status: "error", progress: 0, result: null, resultNatural: null, error: sizeErr };
-        return next;
-      });
-      return;
-    }
-
+    revokeSrc(item.result);
+    const queued = { ...item, status: "queued" as const, progress: 0, result: null, resultNatural: null, error: undefined };
     setItems((prev) => {
       const next = [...prev];
-      next[idx] = { ...item, status: "processing", progress: 0, result: null, resultNatural: null, error: undefined };
+      next[idx] = queued;
       return next;
     });
-    const myGen = runGen.current;
-    (async () => {
-      try {
-        const result = await upscaleImage(item.src, scale, (pct) => {
-          if (myGen !== runGen.current) return;
-          setItems((prev) => {
-            const next = [...prev];
-            if (next[idx]?.status === "processing") next[idx] = { ...next[idx], progress: pct };
-            return next;
-          });
-        }, item.mode);
-        if (myGen !== runGen.current) return;
-        const resultNatural = await measureDataUrl(result);
-        setItems((prev) => {
-          const next = [...prev];
-          next[idx] = { ...next[idx], status: "done", progress: 100, result, resultNatural };
-          return next;
-        });
-      } catch (err) {
-        if (myGen !== runGen.current) return;
-        setItems((prev) => {
-          const next = [...prev];
-          next[idx] = { ...next[idx], status: "error", error: err instanceof Error ? err.message : "Upscaling failed" };
-          return next;
-        });
-      }
-    })();
-  }, [scale]);
+    enqueue([{ idx, item: queued, factor: scale }]);
+  }, [scale, enqueue]);
 
   const retryItem = useCallback((idx: number) => {
     const current = items[idx];
-    if (!current || current.status === "processing") return;
+    if (!current || current.status === "processing" || current.status === "queued") return;
     runSingle(idx, current);
   }, [items, runSingle]);
 
   // Switch one image between upscale and enhance and re-run just that image.
   const changeMode = useCallback((idx: number, mode: ProcessMode) => {
     const current = items[idx];
-    if (!current || current.status === "processing" || current.mode === mode) return;
+    if (!current || current.status === "processing" || current.status === "queued" || current.mode === mode) return;
     runSingle(idx, { ...current, mode });
   }, [items, runSingle]);
 
+  const navigateTo = useCallback((idx: number) => {
+    if (idx < 0 || idx >= items.length) return;
+    setCurrentIdx(idx);
+  }, [items.length]);
+
   const reset = useCallback(() => {
     runGen.current++;
+    jobs.current = [];
     revokeResults(items);
+    items.forEach((it) => revokeSrc(it.src));
     setItems([]);
+    setCurrentIdx(0);
     setStep("upload");
-    setModelLoading(false);
     setLoadError(null);
   }, [items]);
 
@@ -205,8 +189,8 @@ export function useUpscale() {
 
   return {
     step, items, scale, modelLoading, loadError,
-    doneCount, processingCount,
+    doneCount, processingCount, currentIdx, navigateTo,
     loadAndUpscale, changeScale, changeMode, retryItem, reset,
-    clearLoadError: () => setLoadError(null),
+    clearLoadError: () => setLoadError(null), reportLoadError: setLoadError,
   };
 }

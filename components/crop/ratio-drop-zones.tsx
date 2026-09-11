@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RATIOS, isAcceptedFile, MAX_FILE_SIZE } from "@/lib/constants";
-import { convertHeicFiles, isHeicFile } from "@/lib/heic-convert";
-import { convertSvgFiles, isSvgFile } from "@/lib/svg-convert";
+import { RATIOS } from "@/lib/constants";
+import { prepareFiles, needsConversion } from "@/lib/file-intake";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
+import { isOverlayOpen } from "@/lib/overlay-state";
 
 interface RatioDropZonesProps {
   onDropWithRatio: (files: FileList, ratioValue: number | null, ratioLabel: string) => void;
@@ -17,42 +17,16 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
   const clickedRatioRef = useRef<{ value: number | null; label: string } | null>(null);
   const ratioInputRef = useRef<HTMLInputElement>(null);
 
-  const validate = (files: FileList): FileList | null => {
-    setError(null);
-    for (const file of Array.from(files)) {
-      if (!isAcceptedFile(file)) {
-        setError(`Unsupported format: ${file.name}. Use PNG, JPG, WebP, AVIF, or HEIC.`);
-        return null;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        setError(`${file.name} exceeds 20MB limit.`);
-        return null;
-      }
-    }
-    return files;
-  };
-
   const processFiles = async (files: FileList, ratioValue: number | null, ratioLabel: string) => {
-    const valid = validate(files);
-    if (!valid) return;
-
-    const arr = Array.from(valid);
-    const needsHeic = arr.some(isHeicFile);
-    const needsSvg = arr.some(isSvgFile);
-    if (needsHeic || needsSvg) {
-      setConverting(true);
-      try {
-        let out: FileList = valid;
-        if (needsHeic) out = await convertHeicFiles(Array.from(out));
-        if (needsSvg) out = await convertSvgFiles(Array.from(out));
-        onDropWithRatio(out, ratioValue, ratioLabel);
-      } catch {
-        setError(needsHeic ? "Failed to convert HEIC file. Try converting it to JPG first." : "Failed to convert SVG file.");
-      } finally {
-        setConverting(false);
-      }
-    } else {
-      onDropWithRatio(valid, ratioValue, ratioLabel);
+    setError(null);
+    const converting = needsConversion(files);
+    if (converting) setConverting(true);
+    try {
+      const { files: ready, error: err } = await prepareFiles(files);
+      if (err) setError(err);
+      if (ready) onDropWithRatio(ready, ratioValue, ratioLabel);
+    } finally {
+      if (converting) setConverting(false);
     }
   };
 
@@ -66,6 +40,7 @@ export function RatioDropZones({ onDropWithRatio }: RatioDropZonesProps) {
     const handler = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isOverlayOpen()) return;
       const num = parseInt(e.key, 10);
       if (num >= 1 && num <= RATIOS.length) {
         e.preventDefault();

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { SHORTCUT_MAP } from "@/lib/constants";
+import { isOverlayOpen } from "@/lib/overlay-state";
 
 interface ShortcutActions {
   onEnter?: () => void;
@@ -26,8 +27,9 @@ export function useKeyboardShortcuts(actions: ShortcutActions = {}) {
     const handler = (e: KeyboardEvent) => {
       if (e.repeat) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
       const a = actionsRef.current;
+      // An open overlay (help panel) owns Enter/Escape/arrows; mode switching still works.
+      const overlayOpen = isOverlayOpen();
 
       if (!a.disableModeNav && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         const num = parseInt(e.key, 10);
@@ -37,6 +39,8 @@ export function useKeyboardShortcuts(actions: ShortcutActions = {}) {
           return;
         }
       }
+
+      if (overlayOpen) return;
 
       if (e.key === "Enter" && a.onEnter) {
         e.preventDefault();

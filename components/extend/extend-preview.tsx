@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { NaturalSize } from "@/lib/types";
-import { extendGeometry, renderExtended, FillStyle } from "@/lib/extend-utils";
+import { extendGeometry, renderExtended, previewGeometry, extendSizeError, FillStyle } from "@/lib/extend-utils";
 
 interface ExtendPreviewProps {
   src: string;
@@ -29,18 +29,15 @@ export function ExtendPreview({ src, natural, ratio, padding, fillStyle, fillCol
     return () => { cancelled = true; };
   }, [src]);
 
+  const sizeError = extendSizeError(extendGeometry(natural, ratio, padding));
+
+  // Preview renders straight into the visible canvas at display size on every change;
+  // full resolution is only rendered on download.
   useEffect(() => {
-    if (!img) return;
-    const geo = extendGeometry(natural, ratio, padding);
-    const out = renderExtended(img, geo, { style: fillStyle, color: fillColor });
     const target = canvasRef.current;
-    if (!target) return;
-    target.width = out.width;
-    target.height = out.height;
-    const ctx = target.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, target.width, target.height);
-    ctx.drawImage(out, 0, 0);
+    if (!img || !target) return;
+    const geo = previewGeometry(extendGeometry(natural, ratio, padding));
+    renderExtended(img, geo, { style: fillStyle, color: fillColor }, target);
   }, [img, natural, ratio, padding, fillStyle, fillColor]);
 
   return (
@@ -48,11 +45,16 @@ export function ExtendPreview({ src, natural, ratio, padding, fillStyle, fillCol
       className="rounded-2xl border border-border p-3 flex items-center justify-center"
       style={{ background: CHECKER }}
     >
-      <canvas
-        ref={canvasRef}
-        className="max-w-full max-h-[58vh] rounded-lg shadow-sm"
-        style={{ objectFit: "contain" }}
-      />
+      <div className="flex flex-col items-center gap-2">
+        <canvas
+          ref={canvasRef}
+          className="max-w-full max-h-[58vh] rounded-lg shadow-sm"
+          style={{ objectFit: "contain" }}
+        />
+        {sizeError && (
+          <p className="text-xs text-error font-medium text-center" role="alert">{sizeError}</p>
+        )}
+      </div>
     </div>
   );
 }

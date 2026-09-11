@@ -1,9 +1,10 @@
 "use client";
 
-import { useExtend } from "@/hooks/use-extend";
+import { useToolState } from "@/components/tool-state-provider";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useDownload } from "@/hooks/use-download";
 import { RatioDropZones } from "@/components/crop/ratio-drop-zones";
 import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
 import { ExtendPreview } from "@/components/extend/extend-preview";
@@ -11,8 +12,7 @@ import { ExtendControls } from "@/components/extend/extend-controls";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Badge } from "@/components/ui/badge";
-import { dlCanvas, dlAllExtended } from "@/lib/download";
-import { extendGeometry, renderExtended, extendFilename, loadImageEl } from "@/lib/extend-utils";
+import { dlExtended, dlAllExtended } from "@/lib/download";
 import { DlIcon } from "@/components/icons";
 
 export default function ExtendPage() {
@@ -23,23 +23,19 @@ export default function ExtendPage() {
     fillStyle, setFillStyle,
     fillColor, setFillColor,
     isMulti,
-    loadImage, loadWithRatio, navigateTo, reset,
-  } = useExtend();
+    loadImage, loadWithRatio, navigateTo, reset, reportLoadError,
+  } = useToolState().extend;
 
-  useClipboardPaste(step === "upload" ? loadImage : null);
+  useClipboardPaste(step === "upload" ? loadImage : null, reportLoadError);
+  const dl = useDownload();
 
   const resetConfirm = useConfirm({ onConfirm: reset, count: queue.length, threshold: 1 });
 
-  const download = async () => {
-    if (!current) return;
-    const img = await loadImageEl(current.src);
-    const geo = extendGeometry(current.natural, ratio, padding);
-    const cv = renderExtended(img, geo, { style: fillStyle, color: fillColor });
-    dlCanvas(cv, extendFilename(current.name));
-  };
+  const fill = { style: fillStyle, color: fillColor };
+  const download = () => current && dl.run(() => dlExtended(current, ratio, padding, fill));
 
   useKeyboardShortcuts({
-    onEnter: step === "edit" && current ? download : undefined,
+    onEnter: step === "edit" && current && !dl.busy ? download : undefined,
     onEscape: step === "edit" ? resetConfirm.fire : undefined,
     onLeft: isMulti && step === "edit" ? () => navigateTo(currentIdx - 1) : undefined,
     onRight: isMulti && step === "edit" ? () => navigateTo(currentIdx + 1) : undefined,
@@ -117,15 +113,16 @@ export default function ExtendPage() {
             >
               New images
             </ConfirmButton>
-            <Button variant="primary" onClick={download}>
+            <Button variant="primary" onClick={download} disabled={dl.busy}>
               <DlIcon /> Download
             </Button>
             {isMulti && (
-              <Button variant="primary" onClick={() => dlAllExtended(queue, ratio, padding, { style: fillStyle, color: fillColor })}>
-                <DlIcon /> Download all
+              <Button variant="primary" onClick={() => dl.run(() => dlAllExtended(queue, ratio, padding, fill))} disabled={dl.busy}>
+                <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
               </Button>
             )}
           </div>
+          {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}
         </div>
       )}
     </div>

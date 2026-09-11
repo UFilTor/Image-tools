@@ -66,3 +66,35 @@ describe("extendFilename", () => {
     expect(extendFilename("")).toBe("extended.png");
   });
 });
+
+import { extendSizeError, previewGeometry } from "@/lib/extend-utils";
+
+describe("extendSizeError", () => {
+  it("accepts normal outputs", () => {
+    expect(extendSizeError(extendGeometry({ w: 4000, h: 3000 }, 1, 0.1))).toBeNull();
+  });
+  it("refuses outputs past the per-side cap", () => {
+    const err = extendSizeError(extendGeometry({ w: 9000, h: 3000 }, null, 0.2));
+    expect(err).toMatch(/per-side limit/);
+  });
+  it("refuses outputs past the megapixel cap", () => {
+    const err = extendSizeError(extendGeometry({ w: 7000, h: 7000 }, null, 0.1));
+    expect(err).toMatch(/MP limit/);
+  });
+});
+
+describe("previewGeometry", () => {
+  it("returns the same geometry when already within the preview cap", () => {
+    const geo = extendGeometry({ w: 800, h: 600 }, 1, 0);
+    expect(previewGeometry(geo)).toBe(geo);
+  });
+  it("scales every field uniformly so the longest side fits", () => {
+    const geo = extendGeometry({ w: 4000, h: 2000 }, null, 0.25);
+    const p = previewGeometry(geo, 1000);
+    expect(Math.max(p.canvasW, p.canvasH)).toBe(1000);
+    const s = p.canvasW / geo.canvasW;
+    expect(p.imgW).toBe(Math.round(geo.imgW * s));
+    expect(p.dx).toBe(Math.round(geo.dx * s));
+    expect(p.canvasH).toBe(Math.round(geo.canvasH * s));
+  });
+});

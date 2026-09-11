@@ -1,4 +1,6 @@
 import { NaturalSize } from "./types";
+import { MAX_OUTPUT_PIXELS, MAX_OUTPUT_SIDE } from "./upscale";
+import { EXTEND_PREVIEW_MAX_SIDE } from "./constants";
 
 export type FillStyle = "solid" | "blur" | "mirror";
 
@@ -63,6 +65,35 @@ export function extendGeometry(
   return { canvasW, canvasH, dx, dy, imgW: w, imgH: h };
 }
 
+/** Refuse canvases the browser can't assemble; same caps as Upscale. Returns a user-facing message or null. */
+export function extendSizeError(geo: ExtendGeometry): string | null {
+  const px = geo.canvasW * geo.canvasH;
+  if (geo.canvasW > MAX_OUTPUT_SIDE || geo.canvasH > MAX_OUTPUT_SIDE) {
+    return `Output would be ${geo.canvasW}×${geo.canvasH}px, over the ${MAX_OUTPUT_SIDE}px per-side limit. Reduce padding.`;
+  }
+  if (px > MAX_OUTPUT_PIXELS) {
+    return `Output would be ${Math.round(px / 1e6)}MP, over the ${MAX_OUTPUT_PIXELS / 1e6}MP limit. Reduce padding.`;
+  }
+  return null;
+}
+
+/**
+ * Scale a geometry down so its longest side fits `maxSide`. The preview renders at this
+ * size on every slider tick; full resolution is only rendered on download.
+ */
+export function previewGeometry(geo: ExtendGeometry, maxSide = EXTEND_PREVIEW_MAX_SIDE): ExtendGeometry {
+  const s = Math.min(1, maxSide / Math.max(geo.canvasW, geo.canvasH));
+  if (s === 1) return geo;
+  return {
+    canvasW: Math.max(1, Math.round(geo.canvasW * s)),
+    canvasH: Math.max(1, Math.round(geo.canvasH * s)),
+    dx: Math.round(geo.dx * s),
+    dy: Math.round(geo.dy * s),
+    imgW: Math.max(1, Math.round(geo.imgW * s)),
+    imgH: Math.max(1, Math.round(geo.imgH * s)),
+  };
+}
+
 function drawTile(
   ctx: CanvasRenderingContext2D,
   img: CanvasImageSource,
@@ -109,11 +140,14 @@ export function renderExtended(
   img: HTMLImageElement,
   geo: ExtendGeometry,
   fill: ExtendFill,
+  target?: HTMLCanvasElement,
 ): HTMLCanvasElement {
-  const cv = document.createElement("canvas");
+  const cv = target ?? document.createElement("canvas");
   cv.width = geo.canvasW;
   cv.height = geo.canvasH;
   const ctx = cv.getContext("2d")!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   if (fill.style === "solid") {
     ctx.fillStyle = fill.color;
@@ -144,12 +178,4 @@ export function extendFilename(name: string): string {
   return `${d > -1 ? name.slice(0, d) : name}_extended.png`;
 }
 
-/** Load a data URL / URL into an HTMLImageElement. */
-export function loadImageEl(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const el = new Image();
-    el.onload = () => resolve(el);
-    el.onerror = reject;
-    el.src = src;
-  });
-}
+export { loadImageEl } from "./image-utils";

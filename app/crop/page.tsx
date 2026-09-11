@@ -1,10 +1,11 @@
 "use client";
 
-import { useSingleCrop } from "@/hooks/use-single-crop";
+import { useToolState } from "@/components/tool-state-provider";
 import { useCropDrag } from "@/hooks/use-crop-drag";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useDownload } from "@/hooks/use-download";
 import { RatioDropZones } from "@/components/crop/ratio-drop-zones";
 import { RatioPicker } from "@/components/crop/ratio-picker";
 import { ZoomableEditor } from "@/components/crop/zoomable-editor";
@@ -23,15 +24,17 @@ export default function CropPage() {
     crop, setCrop, src, name, nat, disp,
     zoom, setZoom, pan, setPan,
     cropPx, cropPy, isMulti,
-    loadImage, loadWithRatio, pickRatio, navigateTo, goToRatio, reset,
-  } = useSingleCrop();
+    loadImage, loadWithRatio, pickRatio, navigateTo, goToRatio, reset, reportLoadError,
+  } = useToolState().crop;
   const { startDrag } = useCropDrag();
-  useClipboardPaste(step === "upload" ? loadImage : null);
+  useClipboardPaste(step === "upload" ? loadImage : null, reportLoadError);
+  const dl = useDownload();
+  const downloadCurrent = () => src && dl.run(() => dlCrop(src, nat, disp, crop, cropFilename(name)));
 
   const resetConfirm = useConfirm({ onConfirm: reset, count: queue.length, threshold: 1 });
 
   useKeyboardShortcuts({
-    onEnter: step === "crop" && src ? () => dlCrop(src, nat, disp, crop, cropFilename(name)) : undefined,
+    onEnter: step === "crop" && src && !dl.busy ? downloadCurrent : undefined,
     onEscape: step === "crop"
       ? (isMulti ? resetConfirm.fire : goToRatio)
       : step === "ratio" ? resetConfirm.fire : undefined,
@@ -104,15 +107,16 @@ export default function CropPage() {
             >
               New images
             </ConfirmButton>
-            <Button variant="primary" onClick={() => dlCrop(src, nat, disp, crop, cropFilename(name))}>
+            <Button variant="primary" onClick={downloadCurrent} disabled={dl.busy}>
               <DlIcon /> Download
             </Button>
             {isMulti && (
-              <Button variant="primary" onClick={() => dlAllCropQueue(queue)}>
-                <DlIcon /> Download all
+              <Button variant="primary" onClick={() => dl.run(() => dlAllCropQueue(queue))} disabled={dl.busy}>
+                <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
               </Button>
             )}
           </div>
+          {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}
         </div>
       )}
     </div>

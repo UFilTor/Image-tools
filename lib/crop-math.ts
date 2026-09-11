@@ -1,8 +1,9 @@
+import { MIN_CROP_SIZE } from "./constants";
 import { CropRect, BoundingBox, FocalPoint } from "./types";
 
 export function clamp(c: CropRect, dw: number, dh: number, r: number | null): CropRect {
   let { x, y, w, h } = c;
-  w = Math.max(60, Math.min(w, dw));
+  w = Math.max(MIN_CROP_SIZE, Math.min(w, dw));
   if (r !== null) {
     h = w / r;
     if (h > dh) {
@@ -10,7 +11,7 @@ export function clamp(c: CropRect, dw: number, dh: number, r: number | null): Cr
       w = h * r;
     }
   } else {
-    h = Math.max(60, Math.min(h, dh));
+    h = Math.max(MIN_CROP_SIZE, Math.min(h, dh));
   }
   x = Math.max(0, Math.min(x, dw - w));
   y = Math.max(0, Math.min(y, dh - h));

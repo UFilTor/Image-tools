@@ -59,9 +59,10 @@ export interface ExtendQueueItem {
 export type CropDragType = "move" | "tl" | "tr" | "bl" | "br" | "t" | "b" | "l" | "r";
 
 export interface MultiCropItem {
+  /** Stable id so async analysis results land on the right item even after reordering. */
+  id: string;
   src: string;
   name: string;
-  mime: string;
   natural: NaturalSize;
   disp: DisplaySize;
   status: "pending" | "analyzing" | "recalculating" | "done" | "error";
@@ -81,7 +82,7 @@ export interface UpscaleItem {
   status: "queued" | "processing" | "done" | "error";
   /** 0-100, set during processing */
   progress: number;
-  /** data URL of the upscaled image, set when done */
+  /** object URL of the upscaled image, set when done */
   result: string | null;
   /** dimensions of the upscaled result, set when done */
   resultNatural: NaturalSize | null;

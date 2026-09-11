@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CropRect, DisplaySize, NaturalSize } from "@/lib/types";
+import { MIN_CROP_SIZE } from "@/lib/constants";
 
 interface SizeInputProps {
   cropPx: number;
@@ -22,7 +23,7 @@ export function SizeInput({ cropPx, cropPy, ratio, crop, setCrop, disp, nat }: S
     if (!newW || newW < 10) return;
     const scale = disp.dw / nat.w;
     let dw = newW * scale;
-    dw = Math.max(60, Math.min(dw, disp.dw));
+    dw = Math.max(MIN_CROP_SIZE, Math.min(dw, disp.dw));
     let dh: number;
     if (ratio !== null) {
       dh = dw / ratio;
@@ -45,7 +46,7 @@ export function SizeInput({ cropPx, cropPy, ratio, crop, setCrop, disp, nat }: S
     if (!newH || newH < 10) return;
     const scale = disp.dh / nat.h;
     let dh = newH * scale;
-    dh = Math.max(60, Math.min(dh, disp.dh));
+    dh = Math.max(MIN_CROP_SIZE, Math.min(dh, disp.dh));
     let dw: number;
     if (ratio !== null) {
       dw = dh * ratio;

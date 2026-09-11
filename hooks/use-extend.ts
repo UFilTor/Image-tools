@@ -1,18 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { NaturalSize, ExtendQueueItem } from "@/lib/types";
-import { readFileAsImage } from "@/lib/image-utils";
-import { isAcceptedFile } from "@/lib/constants";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { ExtendQueueItem } from "@/lib/types";
+import { revokeSrc, LoadedImage } from "@/lib/image-utils";
+import { loadImageFiles } from "@/lib/load-images";
 import { FillStyle } from "@/lib/extend-utils";
 
 type ExtendStep = "upload" | "edit";
-
-interface LoadedImage {
-  src: string;
-  name: string;
-  nat: NaturalSize;
-}
 
 export function useExtend() {
   const [step, setStep] = useState<ExtendStep>("upload");
@@ -27,45 +21,38 @@ export function useExtend() {
 
   const current = queue[currentIdx] || null;
 
-  const loadFiles = useCallback(async (files: FileList): Promise<LoadedImage[] | null> => {
+  const srcsRef = useRef<string[]>([]);
+  useEffect(() => {
+    srcsRef.current = queue.map((q) => q.src);
+  }, [queue]);
+
+  const load = useCallback(async (files: FileList): Promise<LoadedImage[] | null> => {
     setLoadError(null);
-    const arr = Array.from(files).filter((f) => isAcceptedFile(f));
-    if (!arr.length) return null;
-
-    const results = await Promise.all(arr.map(readFileAsImage));
-    const ok = results.filter((r): r is LoadedImage => r !== null);
-    const failed = arr.length - ok.length;
-
-    if (!ok.length) {
-      setLoadError(`Couldn't read ${arr.length === 1 ? "that image" : "any of those images"}. Try a different file.`);
-      return null;
-    }
-    if (failed > 0) {
-      setLoadError(`Skipped ${failed} unreadable file${failed === 1 ? "" : "s"}.`);
-    }
-    return ok;
+    const { images, error } = await loadImageFiles(files);
+    if (error) setLoadError(error);
+    return images.length ? images : null;
   }, []);
 
   const buildItems = (imgs: LoadedImage[]): ExtendQueueItem[] =>
     imgs.map((img) => ({ src: img.src, name: img.name, natural: img.nat, adjusted: false }));
 
   const loadImage = useCallback(async (files: FileList) => {
-    const ok = await loadFiles(files);
+    const ok = await load(files);
     if (!ok) return;
     setQueue(buildItems(ok));
     setCurrentIdx(0);
     setStep("edit");
-  }, [loadFiles]);
+  }, [load]);
 
   const loadWithRatio = useCallback(async (files: FileList, ratioVal: number | null, rLabel: string) => {
-    const ok = await loadFiles(files);
+    const ok = await load(files);
     if (!ok) return;
     setQueue(buildItems(ok));
     setCurrentIdx(0);
     setRatioState(ratioVal);
     setRatioLabel(rLabel);
     setStep("edit");
-  }, [loadFiles]);
+  }, [load]);
 
   const setRatio = useCallback((v: number | null, label: string) => {
     setRatioState(v);
@@ -78,6 +65,7 @@ export function useExtend() {
   }, [queue.length]);
 
   const reset = useCallback(() => {
+    srcsRef.current.forEach(revokeSrc);
     setQueue([]);
     setCurrentIdx(0);
     setStep("upload");
@@ -92,7 +80,7 @@ export function useExtend() {
     fillStyle, setFillStyle,
     fillColor, setFillColor,
     isMulti,
-    loadError, clearLoadError: () => setLoadError(null),
+    loadError, clearLoadError: () => setLoadError(null), reportLoadError: setLoadError,
     loadImage, loadWithRatio, navigateTo, reset,
   };
 }

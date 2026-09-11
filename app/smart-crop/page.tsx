@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useMultiCrop } from "@/hooks/use-multi-crop";
+import { useToolState } from "@/components/tool-state-provider";
 import { useCropDrag } from "@/hooks/use-crop-drag";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useDownload } from "@/hooks/use-download";
 import { RatioDropZones } from "@/components/crop/ratio-drop-zones";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
@@ -26,10 +27,11 @@ export default function SmartCropPage() {
     zoom, setZoom, pan, setPan,
     doneCount, errCount, analyzingCount,
     loadImages, loadAndAnalyzeWithRatio, startAnalysis, batchRecrop, retryItem,
-    reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset,
-  } = useMultiCrop();
+    reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset, reportLoadError,
+  } = useToolState().smartCrop;
   const { startDrag } = useCropDrag();
-  useClipboardPaste(step === "upload" ? loadImages : null);
+  useClipboardPaste(step === "upload" ? loadImages : null, reportLoadError);
+  const dl = useDownload();
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
 
@@ -38,8 +40,8 @@ export default function SmartCropPage() {
 
   useKeyboardShortcuts({
     disableModeNav: step === "ratio" || step === "recrop",
-    onEnter: isEdit && editItem?.crop && editCrop
-      ? () => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, cropFilename(editItem.name))
+    onEnter: isEdit && editItem?.crop && editCrop && !dl.busy
+      ? () => dl.run(() => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, cropFilename(editItem.name)))
       : undefined,
     onEscape: isEdit ? saveAndCloseEdit : step === "review" ? resetConfirm.fire : undefined,
     onLeft: isEdit ? () => navigateEdit("prev") : undefined,
@@ -158,16 +160,18 @@ export default function SmartCropPage() {
             <Button onClick={saveAndCloseEdit}>Save &amp; back</Button>
             <Button
               variant="primary"
-              onClick={() => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, cropFilename(editItem.name))}
+              onClick={() => dl.run(() => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, cropFilename(editItem.name)))}
+              disabled={dl.busy}
             >
               <DlIcon /> Download
             </Button>
             {items.length > 1 && (
-              <Button variant="primary" onClick={() => dlAll(items)}>
-                <DlIcon /> Download all
+              <Button variant="primary" onClick={() => dl.run(() => dlAll(items))} disabled={dl.busy}>
+                <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
               </Button>
             )}
           </div>
+          {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}
         </div>
       </div>
     );
@@ -201,11 +205,12 @@ export default function SmartCropPage() {
             >
               New batch
             </ConfirmButton>
-            <Button size="sm" variant="primary" onClick={() => dlAll(items)} disabled={doneCount === 0}>
-              <DlIcon /> Download all
+            <Button size="sm" variant="primary" onClick={() => dl.run(() => dlAll(items))} disabled={doneCount === 0 || dl.busy}>
+              <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
             </Button>
           </div>
         </div>
+        {dl.error && <p className="text-sm text-error font-medium mb-3" role="alert">{dl.error}</p>}
 
         {items.length > 1 && (
           <p className="text-xs text-text-dim mb-4">
@@ -342,7 +347,8 @@ export default function SmartCropPage() {
                       size="sm"
                       variant="primary"
                       aria-label={`Download ${item.name}`}
-                      onClick={() => dlCrop(item.src, item.natural, item.disp, item.crop!, cropFilename(item.name))}
+                      onClick={() => dl.run(() => dlCrop(item.src, item.natural, item.disp, item.crop!, cropFilename(item.name)))}
+                      disabled={dl.busy}
                     >
                       <DlIcon />
                     </Button>

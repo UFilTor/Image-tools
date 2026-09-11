@@ -1,9 +1,11 @@
 "use client";
 
-import { useLogoProcessor } from "@/hooks/use-logo-processor";
+import { useToolState } from "@/components/tool-state-provider";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { ACCEPTED_FORMATS_LABEL } from "@/lib/constants";
 import { useClipboardPaste } from "@/hooks/use-clipboard-paste";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useDownload } from "@/hooks/use-download";
 import { DropZone } from "@/components/ui/drop-zone";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
@@ -16,24 +18,24 @@ export default function LogoPage() {
     step, src, name, nat, isTransparent,
     removeBgEnabled, setRemoveBgEnabled,
     recolor, setRecolor, customHex, setCustomHex,
-    preview, loadLogo, updateLogo, getExportCanvas, reset,
-  } = useLogoProcessor();
+    preview, loadLogo, updateLogo, getExportCanvas, reset, reportLoadError,
+  } = useToolState().logo;
 
-  useClipboardPaste(step === "upload" ? loadLogo : null);
+  useClipboardPaste(step === "upload" ? loadLogo : null, reportLoadError);
+  const dl = useDownload();
 
   const resetConfirm = useConfirm({ onConfirm: reset, count: src ? 1 : 0, threshold: 1 });
 
   const handleDownload = () => {
     const canvas = getExportCanvas();
-    if (canvas) {
-      const ext = name.lastIndexOf(".");
-      const baseName = ext > -1 ? name.slice(0, ext) : name;
-      dlCanvas(canvas, `${baseName}_processed.png`);
-    }
+    if (!canvas) return;
+    const ext = name.lastIndexOf(".");
+    const baseName = ext > -1 ? name.slice(0, ext) : name;
+    dl.run(() => dlCanvas(canvas, `${baseName}_processed.png`));
   };
 
   useKeyboardShortcuts({
-    onEnter: step === "edit" ? handleDownload : undefined,
+    onEnter: step === "edit" && !dl.busy ? handleDownload : undefined,
     onEscape: step === "edit" ? resetConfirm.fire : undefined,
   });
 
@@ -62,7 +64,7 @@ export default function LogoPage() {
                 <p className={`text-[15px] font-medium ${over ? "text-primary" : "text-text-secondary"}`}>
                   Drop logo here or <span className="text-primary font-bold">browse</span>
                 </p>
-                <p className="text-xs mt-2 text-text-muted">PNG, JPG, WebP, AVIF, or HEIC</p>
+                <p className="text-xs mt-2 text-text-muted">{ACCEPTED_FORMATS_LABEL}</p>
               </>
             )}
           </DropZone>
@@ -149,10 +151,11 @@ export default function LogoPage() {
             >
               New logo
             </ConfirmButton>
-            <Button variant="primary" onClick={handleDownload}>
+            <Button variant="primary" onClick={handleDownload} disabled={dl.busy}>
               <DlIcon /> Download PNG
             </Button>
           </div>
+          {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}
         </div>
       )}
     </div>

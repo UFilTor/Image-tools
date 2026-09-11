@@ -3,6 +3,8 @@ import { downscaleForAI } from "./image-utils";
 
 let apiAvailable: boolean | null = null;
 
+const MAX_RATE_LIMIT_RETRIES = 3;
+
 async function checkApiAvailable(): Promise<boolean> {
   if (apiAvailable !== null) return apiAvailable;
   try {
@@ -15,34 +17,41 @@ async function checkApiAvailable(): Promise<boolean> {
   return apiAvailable;
 }
 
-export async function detectFocal(src: string, mime: string): Promise<FocalResult> {
+/** POST an already-downscaled payload; retries a bounded number of times on rate limits. */
+async function postFocal(payload: { src: string; mime: string }, retriesLeft: number): Promise<FocalResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
   try {
-    // Downscale before sending — Anthropic's inline-image cap is 5 MB.
-    const { src: downscaled, mime: downscaledMime } = await downscaleForAI(src);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-
     const res = await fetch("/api/detect-focal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ src: downscaled, mime: downscaledMime }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
-
-    clearTimeout(timeout);
-
     const data = await res.json();
 
     if (!res.ok) {
-      if (data?.error?.type === "rate_limit_error" || data?.type === "rate_limit_error") {
-        return retryWithBackoff(src, mime, 3);
+      const rateLimited = data?.error?.type === "rate_limit_error" || data?.type === "rate_limit_error" || res.status === 429;
+      if (rateLimited) {
+        if (retriesLeft <= 0) return { bbox: null, label: "", error: "Rate limit hit, try again shortly" };
+        const attempt = MAX_RATE_LIMIT_RETRIES - retriesLeft + 1;
+        await new Promise((r) => setTimeout(r, attempt * 2000));
+        return postFocal(payload, retriesLeft - 1);
       }
       const errMsg = typeof data?.error === "string" ? data.error : data?.error?.message || `API error (HTTP ${res.status})`;
       return { bbox: null, label: "", error: errMsg };
     }
-
     return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function detectFocal(src: string): Promise<FocalResult> {
+  try {
+    // Downscale once, then reuse the payload across retries.
+    const payload = await downscaleForAI(src);
+    return await postFocal(payload, MAX_RATE_LIMIT_RETRIES);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return {
@@ -55,7 +64,6 @@ export async function detectFocal(src: string, mime: string): Promise<FocalResul
 
 export async function detectFocalWithFallback(
   src: string,
-  mime: string,
   imgWidth: number,
   imgHeight: number,
 ): Promise<FocalResult> {
@@ -104,18 +112,5 @@ export async function detectFocalWithFallback(
   }
 
   // Try API
-  return detectFocal(src, mime);
-}
-
-async function retryWithBackoff(
-  src: string,
-  mime: string,
-  retriesLeft: number,
-): Promise<FocalResult> {
-  if (retriesLeft <= 0) {
-    return { bbox: null, label: "", error: "Rate limit hit, try again shortly" };
-  }
-  const delay = (4 - retriesLeft) * 2000;
-  await new Promise((r) => setTimeout(r, delay));
-  return detectFocal(src, mime);
+  return detectFocal(src);
 }

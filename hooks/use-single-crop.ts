@@ -1,27 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { CropRect, NaturalSize, DisplaySize, CropQueueItem } from "@/lib/types";
-import { dispSize, readFileAsImage } from "@/lib/image-utils";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { CropRect, CropQueueItem } from "@/lib/types";
+import { editorDispSize, rescaleCrop, revokeSrc, LoadedImage } from "@/lib/image-utils";
+import { loadImageFiles } from "@/lib/load-images";
 import { centered } from "@/lib/crop-math";
-import { isAcceptedFile } from "@/lib/constants";
+import { useWindowResize } from "./use-window-resize";
 
 type CropStep = "upload" | "ratio" | "crop";
-
-interface LoadedImage {
-  src: string;
-  name: string;
-  nat: NaturalSize;
-}
-
-function computeDisp(nat: NaturalSize): DisplaySize {
-  return dispSize(
-    nat.w,
-    nat.h,
-    Math.min(typeof window !== "undefined" ? window.innerWidth - 96 : 800, nat.w),
-    Math.min(typeof window !== "undefined" ? window.innerHeight - 230 : 600, nat.h),
-  );
-}
 
 export function useSingleCrop() {
   const [step, setStep] = useState<CropStep>("upload");
@@ -32,59 +18,30 @@ export function useSingleCrop() {
   const [ratioLabel, setRatioLabel] = useState("1:1");
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const current = queue[currentIdx] || null;
 
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Object URLs must be released when images are discarded or the page unmounts.
+  const srcsRef = useRef<string[]>([]);
+  useEffect(() => {
+    srcsRef.current = [...queue.map((q) => q.src), ...pendingImages.map((p) => p.src)];
+  }, [queue, pendingImages]);
 
-  const loadImage = useCallback(async (files: FileList) => {
+  const load = useCallback(async (files: FileList): Promise<LoadedImage[] | null> => {
     setLoadError(null);
-    const arr = Array.from(files).filter((f) => isAcceptedFile(f));
-    if (!arr.length) return;
-
-    const results = await Promise.all(arr.map(readFileAsImage));
-    const ok = results.filter((r): r is LoadedImage => r !== null);
-    const failed = arr.length - ok.length;
-
-    if (!ok.length) {
-      setLoadError(`Couldn't read ${arr.length === 1 ? "that image" : "any of those images"}. Try a different file.`);
-      return;
-    }
-    if (failed > 0) {
-      setLoadError(`Skipped ${failed} unreadable file${failed === 1 ? "" : "s"}.`);
-    }
-    setPendingImages(ok);
-    setStep("ratio");
+    const { images, error } = await loadImageFiles(files);
+    if (error) setLoadError(error);
+    return images.length ? images : null;
   }, []);
 
-  const loadWithRatio = useCallback(async (files: FileList, ratioVal: number | null, rLabel: string) => {
-    setLoadError(null);
-    const arr = Array.from(files).filter((f) => isAcceptedFile(f));
-    if (!arr.length) return;
-
-    const results = await Promise.all(arr.map(readFileAsImage));
-    const ok = results.filter((r): r is LoadedImage => r !== null);
-    const failed = arr.length - ok.length;
-
-    if (!ok.length) {
-      setLoadError(`Couldn't read ${arr.length === 1 ? "that image" : "any of those images"}. Try a different file.`);
-      return;
-    }
-    if (failed > 0) {
-      setLoadError(`Skipped ${failed} unreadable file${failed === 1 ? "" : "s"}.`);
-    }
-
-    const items: CropQueueItem[] = ok.map((img) => {
-      const d = computeDisp(img.nat);
-      return {
-        src: img.src,
-        name: img.name,
-        natural: img.nat,
-        disp: d,
-        crop: centered(d.dw, d.dh, ratioVal),
-        adjusted: false,
-      };
+  const buildQueue = (imgs: LoadedImage[], ratioVal: number | null): CropQueueItem[] =>
+    imgs.map((img) => {
+      const d = editorDispSize(img.nat);
+      return { src: img.src, name: img.name, natural: img.nat, disp: d, crop: centered(d.dw, d.dh, ratioVal), adjusted: false };
     });
+
+  const enterCrop = (items: CropQueueItem[], ratioVal: number | null, rLabel: string) => {
     setQueue(items);
     setCurrentIdx(0);
     setRatio(ratioVal);
@@ -92,27 +49,23 @@ export function useSingleCrop() {
     setStep("crop");
     setZoom(1);
     setPan({ x: 0, y: 0 });
-  }, []);
+  };
+
+  const loadImage = useCallback(async (files: FileList) => {
+    const ok = await load(files);
+    if (!ok) return;
+    setPendingImages(ok);
+    setStep("ratio");
+  }, [load]);
+
+  const loadWithRatio = useCallback(async (files: FileList, ratioVal: number | null, rLabel: string) => {
+    const ok = await load(files);
+    if (!ok) return;
+    enterCrop(buildQueue(ok, ratioVal), ratioVal, rLabel);
+  }, [load]);
 
   const pickRatio = useCallback((v: number | null, label: string) => {
-    const items: CropQueueItem[] = pendingImages.map((img) => {
-      const d = computeDisp(img.nat);
-      return {
-        src: img.src,
-        name: img.name,
-        natural: img.nat,
-        disp: d,
-        crop: centered(d.dw, d.dh, v),
-        adjusted: false,
-      };
-    });
-    setQueue(items);
-    setCurrentIdx(0);
-    setRatio(v);
-    setRatioLabel(label);
-    setStep("crop");
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
+    enterCrop(buildQueue(pendingImages, v), v, label);
   }, [pendingImages]);
 
   const setCrop = useCallback((crop: CropRect) => {
@@ -125,6 +78,15 @@ export function useSingleCrop() {
     });
   }, [currentIdx]);
 
+  // Keep the editor sized to the viewport; crops are display-space so they scale along.
+  useWindowResize(() => {
+    setQueue((prev) => prev.map((it) => {
+      const d = editorDispSize(it.natural);
+      if (d.dw === it.disp.dw && d.dh === it.disp.dh) return it;
+      return { ...it, disp: d, crop: rescaleCrop(it.crop, it.disp, d) };
+    }));
+  });
+
   const navigateTo = useCallback((idx: number) => {
     if (idx < 0 || idx >= queue.length) return;
     setCurrentIdx(idx);
@@ -133,13 +95,14 @@ export function useSingleCrop() {
   }, [queue.length]);
 
   const goToRatio = useCallback(() => {
-    setPendingImages(queue.map((q) => ({ src: q.src, name: q.name, nat: q.natural })));
+    setPendingImages(queue.map((q) => ({ src: q.src, name: q.name, mime: "", nat: q.natural })));
     setStep("ratio");
     setZoom(1);
     setPan({ x: 0, y: 0 });
   }, [queue]);
 
   const reset = useCallback(() => {
+    srcsRef.current.forEach(revokeSrc);
     setQueue([]);
     setPendingImages([]);
     setCurrentIdx(0);
@@ -162,7 +125,7 @@ export function useSingleCrop() {
     disp: current?.disp ?? { dw: 0, dh: 0 },
     zoom, setZoom, pan, setPan,
     cropPx, cropPy, isMulti,
-    loadError, clearLoadError: () => setLoadError(null),
+    loadError, clearLoadError: () => setLoadError(null), reportLoadError: setLoadError,
     loadImage, loadWithRatio, pickRatio, navigateTo, goToRatio, reset,
   };
 }

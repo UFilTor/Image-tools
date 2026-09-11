@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useModKey } from "@/lib/platform";
+import { setOverlayOpen } from "@/lib/overlay-state";
 
 interface ShortcutGroup {
   title: string;
@@ -54,6 +55,13 @@ export function HelpPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const lastFocusRef = useRef<HTMLElement | null>(null);
 
+  // Tell page-level shortcuts the overlay owns the keyboard while open.
+  useEffect(() => {
+    if (!open) return;
+    setOverlayOpen(true);
+    return () => setOverlayOpen(false);
+  }, [open]);
+
   useEffect(() => {
     if (open) {
       lastFocusRef.current = document.activeElement as HTMLElement | null;
@@ -73,6 +81,7 @@ export function HelpPanel() {
         setOpen((o) => !o);
       } else if (e.key === "Escape" && open) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         setOpen(false);
       }
     };

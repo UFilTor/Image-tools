@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { CropRect, CropDragType } from "@/lib/types";
 import { clamp } from "@/lib/crop-math";
+import { MIN_CROP_SIZE } from "@/lib/constants";
 
 interface DragState {
   type: CropDragType;
@@ -47,8 +48,8 @@ export function useCropDrag() {
         if (isT) { nh = sc.h - dy; c.y = sc.y + dy; }
         else if (isB) { nh = sc.h + dy; }
 
-        nw = Math.max(60, nw);
-        nh = Math.max(60, nh);
+        nw = Math.max(MIN_CROP_SIZE, nw);
+        nh = Math.max(MIN_CROP_SIZE, nh);
 
         if (isL) { c.x = sc.x + sc.w - nw; }
         if (isT) { c.y = sc.y + sc.h - nh; }
@@ -66,7 +67,7 @@ export function useCropDrag() {
             : type === "t"
               ? (sc.h - dy) * r
               : (sc.h + dy) * r;
-        nw = Math.max(60, nw);
+        nw = Math.max(MIN_CROP_SIZE, nw);
         const nh = nw / r;
         c.x = isL ? sc.x + sc.w - nw : ["t", "b"].includes(type) ? sc.x + (sc.w - nw) / 2 : sc.x;
         c.y = isT ? sc.y + sc.h - nh : ["l", "r"].includes(type) ? sc.y + (sc.h - nh) / 2 : sc.y;

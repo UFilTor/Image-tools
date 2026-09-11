@@ -4,6 +4,7 @@ import Image from "next/image";
 import "@/styles/globals.css";
 import { NavTabs } from "@/components/nav-tabs";
 import { HelpPanel } from "@/components/help-panel";
+import { ToolStateProvider } from "@/components/tool-state-provider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${oswald.variable}`}>
       <body className="min-h-screen bg-bg font-sans text-text antialiased">
+        <ToolStateProvider>
         <div className="flex flex-col items-center px-4 sm:px-6 pb-16">
           <header className="w-full max-w-[1200px] flex flex-col sm:flex-row items-center sm:justify-between gap-3 sm:gap-0 pt-5 pb-2">
             <div className="flex items-center gap-2.5">
@@ -48,6 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </header>
           {children}
         </div>
+        </ToolStateProvider>
       </body>
     </html>
   );
