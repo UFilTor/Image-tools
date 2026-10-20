@@ -4,14 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
 import { useModKey } from "@/lib/platform";
+import { TOOLS } from "@/lib/constants";
 
-const tabs = [
-  { href: "/crop", label: "Crop", num: "1" },
-  { href: "/smart-crop", label: "Smart Crop", num: "2" },
-  { href: "/extend", label: "Extend", num: "3" },
-  { href: "/upscale", label: "Upscale", num: "4" },
-  { href: "/logo", label: "Logo", num: "5" },
-];
 
 export function NavTabs() {
   const pathname = usePathname();
@@ -19,22 +13,26 @@ export function NavTabs() {
 
   return (
     <div className="flex bg-surface rounded-xl border-[1.5px] border-border p-[3px] gap-0.5">
-      {tabs.map(({ href, label, num }) => {
+      {TOOLS.map(({ href, label, num, hint, about }) => {
         const active = pathname === href;
         const shortcut = modKey ? `${modKey}${num}` : null;
         return (
           <Link
             key={href}
             href={href}
+            title={about}
             className={`
-              px-[18px] py-2 rounded-[9px] text-[13px] font-semibold tracking-[0.01em]
+              px-[18px] py-1.5 rounded-[9px] text-[13px] font-semibold tracking-[0.01em]
               transition-[background-color,color] duration-150 no-underline flex items-center gap-2
               ${active
                 ? "bg-primary text-accent"
                 : "bg-transparent text-text-muted hover:text-primary"}
             `}
           >
-            {label}
+            <span className="flex flex-col items-start leading-tight">
+              <span>{label}</span>
+              <span className="hidden md:block text-[10px] font-medium tracking-normal">{hint}</span>
+            </span>
             {!active && shortcut && (
               <span className="hidden sm:inline-flex">
                 <KeyboardHint shortcut={shortcut} />

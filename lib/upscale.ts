@@ -26,6 +26,23 @@ export const PATCH_PADDING = 8;
  * as long as the output fits the size caps.
  */
 export type ProcessMode = "upscale" | "enhance";
+
+/**
+ * What a one-click output size change should do for one image. The 2x/4x factor is shared by
+ * the batch, so a new factor means "rescale" (re-queue the batch with this image already set to
+ * upscale); a mode switch at the current factor re-runs just this image. A busy image, or one
+ * already in the requested mode at that factor, is left alone.
+ */
+export function sizeChangePlan(
+  item: { status: string; mode: ProcessMode },
+  mode: ProcessMode,
+  factor: UpscaleFactor,
+  scale: UpscaleFactor,
+): "none" | "rescale" | "mode" {
+  if (item.status === "processing" || item.status === "queued") return "none";
+  if (mode === "upscale" && factor !== scale) return "rescale";
+  return item.mode === mode ? "none" : "mode";
+}
 export const ENHANCE_THRESHOLD = 1000; // px, longest side of the source
 
 /** Pick the default processing mode for a source image: small → upscale, large → enhance. */
@@ -64,6 +81,11 @@ export function upscaleSizeError(natural: NaturalSize, scale: UpscaleFactor): st
 /** Size guard for a specific mode — used by the per-image mode toggle. */
 export function modeSizeError(natural: NaturalSize, mode: ProcessMode, scale: UpscaleFactor): string | null {
   return mode === "upscale" ? upscaleSizeError(natural, scale) : enhanceSizeError(natural);
+}
+
+/** No output size fits (Same size, 2× and 4× all exceed the caps), so Retry can never succeed. */
+export function tooLargeForAnySize(natural: NaturalSize): boolean {
+  return !!enhanceSizeError(natural) && !!upscaleSizeError(natural, 2) && !!upscaleSizeError(natural, 4);
 }
 
 /**

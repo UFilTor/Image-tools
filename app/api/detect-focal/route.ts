@@ -1,36 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ALLOWED_MIME, CLAUDE_MODEL, CLAUDE_URL, MAX_B64_LENGTH, UPSTREAM_TIMEOUT_MS, claudeHeaders, isTimeout } from "@/lib/claude";
+import { clientIp, rateLimited } from "@/lib/rate-limit";
+import { clamp01 } from "@/lib/logo-edits";
 
 export const maxDuration = 60;
 
-/** Image types the Messages API accepts inline. The client always sends JPEG after downscaling. */
-const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
-/** Anthropic's inline-image cap is 5 MB decoded; base64 is ~4/3 of that. */
-const MAX_B64_LENGTH = Math.ceil((5 * 1024 * 1024 * 4) / 3);
-
-/**
- * Best-effort per-IP rate limit so a leaked URL can't burn the API key. In-memory, so it is
- * per serverless instance; good enough to blunt abuse, not a security boundary.
- */
-const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 40;
-const hits = new Map<string, number[]>();
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  recent.push(now);
-  hits.set(ip, recent);
-  if (hits.size > 5000) {
-    // Evict only idle IPs so a flood of spoofed addresses can't reset active counters.
-    for (const [k, v] of hits) if (!v.length || now - v[v.length - 1] >= RATE_WINDOW_MS) hits.delete(k);
-  }
-  // TODO(simplification): in-memory, per serverless instance. Ceiling: N instances => N x RATE_MAX.
-  // Upgrade path: edge rate limiting or a shared store (KV) if the endpoint ever becomes public.
-  return recent.length > RATE_MAX;
-}
-
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  if (rateLimited(ip)) {
+  const ip = clientIp(req.headers);
+  if (rateLimited(ip, "detect-focal")) {
     return NextResponse.json(
       { bbox: null, label: "", error: "Too many requests, slow down a little" },
       { status: 429 },
@@ -46,7 +23,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { src, mime } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ bbox: null, label: "", error: "Send the image as JSON" }, { status: 400 });
+    }
+    const { src, mime } = body;
 
     if (!src || !mime) {
       return NextResponse.json(
@@ -76,16 +57,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch(CLAUDE_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      headers: claudeHeaders(apiKey),
       body: JSON.stringify({
-        model: "claude-sonnet-5",
-        max_tokens: 400,
+        model: CLAUDE_MODEL,
+        // Thinking is on by default and counts against max_tokens; low effort keeps it short,
+        // and the headroom stops a long think from truncating the JSON.
+        max_tokens: 2048,
+        output_config: { effort: "low" },
+        fallbacks: "default",
         messages: [
           {
             role: "user",
@@ -141,6 +123,10 @@ Return ONLY a raw JSON object, no markdown, no explanation:
       );
     }
 
+    if (d.stop_reason === "refusal") {
+      return NextResponse.json({ bbox: null, label: "", error: "The model declined this image" }, { status: 422 });
+    }
+
     const raw = d.content?.find((b: { type: string }) => b.type === "text")?.text?.trim() || "";
 
     let jsonStr = raw;
@@ -152,8 +138,6 @@ Return ONLY a raw JSON object, no markdown, no explanation:
     }
 
     const p = JSON.parse(jsonStr);
-
-    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
     // Support both new format (subjects_bbox) and old format (x1/y1/x2/y2)
     const rawBbox = p.subjects_bbox || p;
@@ -174,7 +158,9 @@ Return ONLY a raw JSON object, no markdown, no explanation:
       label: p.label || "",
     });
   } catch (err) {
-    const message = err instanceof SyntaxError
+    const message = isTimeout(err)
+      ? "Request timed out"
+      : err instanceof SyntaxError
       ? "Couldn't parse AI response"
       : err instanceof Error
         ? err.message

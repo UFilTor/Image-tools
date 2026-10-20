@@ -1,20 +1,33 @@
 "use client";
 
+import { ReactNode } from "react";
 import { LOGO_RECOLOR_PRESETS } from "@/lib/constants";
+import { HEX_RE } from "@/lib/logo-edits";
+import type { BgMode } from "@/hooks/use-logo-processor";
+
+const BG_MODES: { key: BgMode; label: string }[] = [
+  { key: "off", label: "Off" },
+  { key: "color", label: "Solid color" },
+  { key: "ai", label: "AI" },
+];
 
 interface LogoControlsProps {
   isTransparent: boolean;
-  removeBgEnabled: boolean;
-  setRemoveBgEnabled: (v: boolean) => void;
+  bgMode: BgMode;
+  setBgMode: (v: BgMode) => void;
+  bgStatus: { busy: boolean; pct: number | null; error: string | null };
+  /** Nothing visible is left after background removal (usually a one-color logo) */
+  emptyResult: boolean;
   recolor: string;
   setRecolor: (v: string) => void;
   customHex: string;
   setCustomHex: (v: string) => void;
-  onUpdate: (removeBgEnabled: boolean, recolor: string, customHex: string) => void;
+  /** Section rendered between background removal and recolor (the color-change list). */
+  children?: ReactNode;
 }
 
 export function LogoControls({
-  isTransparent, removeBgEnabled, setRemoveBgEnabled, recolor, setRecolor, customHex, setCustomHex, onUpdate,
+  isTransparent, bgMode, setBgMode, bgStatus, emptyResult, recolor, setRecolor, customHex, setCustomHex, children,
 }: LogoControlsProps) {
   return (
     <div className="bg-surface border border-border rounded-2xl px-[22px] py-5 flex flex-col gap-[18px]">
@@ -29,41 +42,55 @@ export function LogoControls({
             Transparent background detected
           </div>
         ) : (
-          <div
-            role="group"
-            className="inline-flex border border-border rounded-button overflow-hidden text-[13px] font-semibold"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setRemoveBgEnabled(true);
-                onUpdate(true, recolor, customHex);
-              }}
-              className={`px-4 py-2 transition-all duration-150 ${
-                removeBgEnabled
-                  ? "bg-primary text-accent"
-                  : "bg-transparent text-text-muted hover:text-primary"
-              }`}
+          <>
+            <div
+              role="group"
+              aria-label="Background removal"
+              className="inline-flex border border-border rounded-button overflow-hidden text-[13px] font-semibold"
             >
-              On
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setRemoveBgEnabled(false);
-                onUpdate(false, recolor, customHex);
-              }}
-              className={`px-4 py-2 transition-all duration-150 ${
-                !removeBgEnabled
-                  ? "bg-primary text-accent"
-                  : "bg-transparent text-text-muted hover:text-primary"
-              }`}
-            >
-              Off
-            </button>
-          </div>
+              {BG_MODES.map((m) => (
+                <button
+                  key={m.key}
+                  type="button"
+                  aria-pressed={bgMode === m.key}
+                  onClick={() => setBgMode(m.key)}
+                  className={`px-4 py-2 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+                    bgMode === m.key
+                      ? "bg-primary text-accent"
+                      : "bg-transparent text-text-muted hover:text-primary"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            {bgMode === "ai" && (
+              <p className="text-xs text-text-secondary mt-2" role="status">
+                {bgStatus.busy
+                  ? bgStatus.pct !== null && bgStatus.pct < 100
+                    ? `Downloading the AI model… ${Math.round(bgStatus.pct)}%`
+                    : "Removing the background…"
+                  : "Best for photos and busy backgrounds. The first run downloads a 44 MB model."}
+              </p>
+            )}
+            {bgStatus.error && (
+              <p className="text-xs text-error font-medium mt-2" role="alert">{bgStatus.error}</p>
+            )}
+            {emptyResult && !bgStatus.busy && (
+              <p className="text-xs text-error font-medium mt-2" role="alert">
+                Nothing is left after removing the background. This logo seems to be one color. Choose Off.
+              </p>
+            )}
+          </>
         )}
       </div>
+
+      {children && (
+        <>
+          <div className="h-px bg-border" />
+          {children}
+        </>
+      )}
 
       <div className="h-px bg-border" />
 
@@ -76,10 +103,7 @@ export function LogoControls({
             return (
               <button
                 key={opt.key}
-                onClick={() => {
-                  setRecolor(opt.key);
-                  onUpdate(removeBgEnabled, opt.key, customHex);
-                }}
+                onClick={() => setRecolor(opt.key)}
                 className={`
                   inline-flex items-center gap-2 px-[14px] py-2 rounded-button cursor-pointer
                   border-[1.5px] text-[13px] font-semibold transition-all duration-150
@@ -105,29 +129,24 @@ export function LogoControls({
             <input
               type="color"
               value={customHex}
-              onChange={(e) => {
-                setCustomHex(e.target.value);
-                onUpdate(removeBgEnabled, "custom", e.target.value);
-              }}
+              onChange={(e) => setCustomHex(e.target.value)}
               className="w-9 h-9 border-2 border-border rounded-button bg-surface cursor-pointer p-0.5"
             />
             <input
               type="text"
               value={customHex}
               onChange={(e) => {
-                let v = e.target.value;
-                if (/^[0-9a-fA-F]{6}$/.test(v)) {
-                  v = `#${v}`;
-                }
-                setCustomHex(v);
-                if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-                  onUpdate(removeBgEnabled, "custom", v);
-                }
+                const v = e.target.value;
+                setCustomHex(/^[0-9a-fA-F]{6}$/.test(v) ? `#${v}` : v);
               }}
               placeholder="#000000"
+              aria-invalid={!HEX_RE.test(customHex)}
               className="w-[110px] bg-surface border border-border rounded-button text-text text-[13px] font-semibold px-3 py-2 outline-none focus:border-border-focus"
             />
           </div>
+        )}
+        {recolor === "custom" && !HEX_RE.test(customHex) && (
+          <p className="text-xs text-text-secondary mt-2">Use a 6-digit hex like #022C12. The last valid color stays until then.</p>
         )}
       </div>
     </div>

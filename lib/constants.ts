@@ -21,7 +21,7 @@ export const ACCEPTED_FORMATS_LABEL = "PNG, JPG, WebP, AVIF, HEIC, or SVG";
 export const MIN_CROP_SIZE = 60;
 
 /** Space reserved around the crop editor (nav, header row, action buttons), in px. */
-export const EDITOR_INSETS = { x: 96, y: 230 } as const;
+export const EDITOR_INSETS = { x: 96, y: 266 } as const;
 
 /** Color distance tolerance for logo background detection/removal. */
 export const BG_TOLERANCE = 40;
@@ -50,4 +50,22 @@ export const LOGO_RECOLOR_PRESETS = [
   { key: "#ffffff", label: "White", swatch: "#ffffff" },
   { key: "#000000", label: "Black", swatch: "#000000" },
   { key: "custom", label: "Custom", swatch: null },
+] as const;
+
+/** Checkerboard behind transparent previews; `size` is one square in px. */
+export function checkerBg(size = 16): string {
+  return `repeating-conic-gradient(var(--checker-tint) 0% 25%, var(--surface) 0% 50%) 50% / ${size}px ${size}px`;
+}
+
+/**
+ * The tools, in tab order (matches SHORTCUT_MAP.modes). `hint` is the short line under the tab
+ * name; `about` is the tab tooltip and the start page description. A first-time user test showed
+ * "Smart Crop", "Extend" and "Upscale" don't explain themselves.
+ */
+export const TOOLS = [
+  { href: "/crop", label: "Crop", num: "1", hint: "Fixed sizes", about: "Crop photos to booking page sizes" },
+  { href: "/smart-crop", label: "Smart Crop", num: "2", hint: "AI finds the subject", about: "Crop a batch of photos; AI keeps people in frame" },
+  { href: "/extend", label: "Extend", num: "3", hint: "Add space around", about: "Add space around a photo to fit a size, optionally filled by AI" },
+  { href: "/upscale", label: "Upscale", num: "4", hint: "Sharper or bigger", about: "Make photos sharper, and small ones bigger" },
+  { href: "/logo", label: "Logo", num: "5", hint: "Background, colors", about: "Remove a logo's background, change colors or erase parts" },
 ] as const;

@@ -133,6 +133,8 @@ export function dlAllExtended(
   ratio: number | null,
   padding: number,
   fill: ExtendFill,
+  /** Per-item generated background for the "ai" fill; items without one use the mirror fallback. */
+  aiFor?: (item: ExtendQueueItem) => CanvasImageSource | null,
 ): Promise<DownloadResult> {
   return zipAndDownload(
     items.map((it) => ({
@@ -141,7 +143,7 @@ export function dlAllExtended(
         const geo = extendGeometry(it.natural, ratio, padding);
         if (extendSizeError(geo)) return null;
         const img = await loadImageEl(it.src);
-        const cv = renderExtended(img, geo, fill);
+        const cv = renderExtended(img, geo, aiFor ? { ...fill, ai: aiFor(it) } : fill);
         return new Promise<Blob | null>((res) => cv.toBlob(res, "image/png"));
       },
     })),

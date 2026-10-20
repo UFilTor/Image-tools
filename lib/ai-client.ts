@@ -1,20 +1,27 @@
-import { FocalResult } from "./types";
-import { downscaleForAI } from "./image-utils";
+import { BoundingBox, FocalResult } from "./types";
+import { downscaleForAI, loadImageEl, logoForAI } from "./image-utils";
+import type { PaletteColor } from "./logo-edits";
+import { isNetworkError, userMessage } from "./errors";
 
 let apiAvailable: boolean | null = null;
 
 const MAX_RATE_LIMIT_RETRIES = 3;
 
-async function checkApiAvailable(): Promise<boolean> {
+
+/**
+ * Whether the Claude API key is configured. Only a real answer is cached: a network failure
+ * returns false for now and asks again next time, instead of hiding the AI features until a reload.
+ */
+export async function checkApiAvailable(): Promise<boolean> {
   if (apiAvailable !== null) return apiAvailable;
   try {
     const res = await fetch("/api/detect-focal/health");
     const data = await res.json();
     apiAvailable = data.available === true;
+    return apiAvailable;
   } catch {
-    apiAvailable = false;
+    return false;
   }
-  return apiAvailable;
 }
 
 /** POST an already-downscaled payload; retries a bounded number of times on rate limits. */
@@ -53,7 +60,7 @@ export async function detectFocal(src: string): Promise<FocalResult> {
     const payload = await downscaleForAI(src);
     return await postFocal(payload, MAX_RATE_LIMIT_RETRIES);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = userMessage(err);
     return {
       bbox: null,
       label: "",
@@ -113,4 +120,84 @@ export async function detectFocalWithFallback(
 
   // Try API
   return detectFocal(src);
+}
+
+export interface LogoEditResult {
+  edits: { from: string; to: string; box: BoundingBox | null }[];
+  /** Areas whose shapes should be removed */
+  erase: BoundingBox[];
+  background: "remove" | "keep" | "unchanged";
+  note: string;
+}
+
+/** Ask Claude to plan a logo edit. Throws with a user-facing message on failure. */
+export async function requestLogoEdit(
+  canvas: HTMLCanvasElement,
+  instruction: string,
+  palette: PaletteColor[],
+  bgRemoved: boolean,
+): Promise<LogoEditResult> {
+  const payload = await logoForAI(canvas);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch("/api/logo-edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, instruction, palette, bgRemoved }),
+      signal: controller.signal,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : `API error (HTTP ${res.status})`);
+    return data;
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "AbortError") throw new Error("Claude took too long (60s), try again");
+    if (isNetworkError(err)) throw new Error(userMessage(err));
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+let gatewayAvailable: Promise<boolean> | null = null;
+
+/** Whether the AI Gateway is configured (image fill / redraw). A failed check is not cached. */
+export function checkGatewayAvailable(): Promise<boolean> {
+  gatewayAvailable ??= fetch("/api/image-edit/health")
+    .then((r) => r.json())
+    .then((d) => d.available === true)
+    .catch(() => {
+      gatewayAvailable = null;
+      return false;
+    });
+  return gatewayAvailable;
+}
+
+/**
+ * Send an image edit through the AI Gateway route and return the decoded result. The bytes go
+ * through a short-lived object URL that is revoked once decoded (callers draw the element).
+ * Throws with a user-facing message on failure.
+ */
+export async function requestImageEdit(form: FormData): Promise<HTMLImageElement> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch("/api/image-edit", { method: "POST", body: form, signal: controller.signal });
+    if (!res.ok || !res.headers.get("content-type")?.startsWith("image/")) {
+      const data = await res.json().catch(() => null);
+      throw new Error(typeof data?.error === "string" ? data.error : `AI Gateway error (HTTP ${res.status})`);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    try {
+      return await loadImageEl(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "AbortError") throw new Error("The image model took too long (1 min), try again");
+    if (isNetworkError(err)) throw new Error(userMessage(err));
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

@@ -54,17 +54,16 @@ export function loadImageEl(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Encode a canvas as an object URL (PNG). Encoding runs off the main thread, unlike toDataURL. */
-export function canvasToObjectUrl(canvas: HTMLCanvasElement, type = "image/png"): Promise<string> {
+/** Encode a canvas as a Blob (PNG by default). Encoding runs off the main thread, unlike toDataURL. */
+export function canvasToBlob(canvas: HTMLCanvasElement, type = "image/png", quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error("Couldn't encode image"));
-        return;
-      }
-      resolve(URL.createObjectURL(blob));
-    }, type);
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Couldn't encode image"))), type, quality);
   });
+}
+
+/** Encode a canvas as an object URL (PNG by default). */
+export async function canvasToObjectUrl(canvas: HTMLCanvasElement, type = "image/png"): Promise<string> {
+  return URL.createObjectURL(await canvasToBlob(canvas, type));
 }
 
 export function cropFilename(name: string): string {
@@ -132,21 +131,42 @@ export async function downscaleForAI(src: string, maxDim = 2048, quality = 0.85)
     }
   }
 
-  const scale = Math.min(1, maxDim / longest);
-  const w = Math.max(1, Math.round(img.naturalWidth * scale));
-  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  return encodeForAI(img, img.naturalWidth, img.naturalHeight, { maxDim, background: "#ffffff", mime: "image/jpeg", quality });
+}
+
+/**
+ * Fit `source` within `maxDim`, flatten it onto `background` and encode it as a data URL for an
+ * API payload (not as an image source; those stay object URLs).
+ */
+async function encodeForAI(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  opts: { maxDim: number; background: string; mime: "image/jpeg" | "image/png"; quality?: number },
+): Promise<{ src: string; mime: string }> {
+  const scale = Math.min(1, opts.maxDim / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
   const cv = document.createElement("canvas");
   cv.width = w;
   cv.height = h;
   const ctx = cv.getContext("2d")!;
+  ctx.fillStyle = opts.background;
+  ctx.fillRect(0, 0, w, h);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, w, h);
-  ctx.drawImage(img, 0, 0, w, h);
-  const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, "image/jpeg", quality));
+  ctx.drawImage(source, 0, 0, w, h);
+  const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, opts.mime, opts.quality));
   if (!blob) throw new Error("Couldn't encode image for analysis");
-  return { src: await blobToDataUrl(blob), mime: "image/jpeg" };
+  return { src: await blobToDataUrl(blob), mime: opts.mime };
+}
+
+/**
+ * Prepare a logo for the logo-edit API: PNG so flat colors stay exact, composited on mid grey
+ * (not white) so white and black parts both stay visible to the model.
+ */
+export function logoForAI(canvas: HTMLCanvasElement, maxDim = 1024): Promise<{ src: string; mime: string }> {
+  return encodeForAI(canvas, canvas.width, canvas.height, { maxDim, background: "#808080", mime: "image/png" });
 }
 
 export function cropToBlob(

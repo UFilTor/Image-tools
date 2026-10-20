@@ -1,13 +1,16 @@
 import { NaturalSize } from "./types";
 import { MAX_OUTPUT_PIXELS, MAX_OUTPUT_SIDE } from "./upscale";
 import { EXTEND_PREVIEW_MAX_SIDE } from "./constants";
+import { canvasToBlob } from "./image-utils";
 
-export type FillStyle = "solid" | "blur" | "mirror";
+export type FillStyle = "solid" | "blur" | "mirror" | "ai";
 
 export interface ExtendFill {
   style: FillStyle;
   /** hex color used when style is "solid" */
   color: string;
+  /** Generated background for style "ai" (whole canvas, any size; it is scaled to fit). Until it exists, "ai" previews as mirror. */
+  ai?: CanvasImageSource | null;
 }
 
 export interface ExtendGeometry {
@@ -163,13 +166,66 @@ export function renderExtended(
     ctx.filter = `blur(${blurPx}px)`;
     ctx.drawImage(img, cx, cy, cw, ch);
     ctx.filter = "none";
-  } else if (fill.style === "mirror") {
+  } else if (fill.style === "ai" && fill.ai) {
+    ctx.drawImage(fill.ai, 0, 0, geo.canvasW, geo.canvasH);
+  } else if (fill.style === "mirror" || fill.style === "ai") {
     fillMirror(ctx, img, geo);
   }
 
   // sharp original on top, centered
   ctx.drawImage(img, geo.dx, geo.dy, geo.imgW, geo.imgH);
   return cv;
+}
+
+/** True when the geometry adds no margin, so there is nothing to fill. */
+export function hasMargin(geo: ExtendGeometry): boolean {
+  return geo.canvasW > geo.imgW || geo.canvasH > geo.imgH;
+}
+
+/** Cache key for a generated fill: the same image at the same geometry can reuse it. */
+export function aiFillKey(src: string, geo: ExtendGeometry): string {
+  return `${src}|${geo.canvasW}x${geo.canvasH}@${geo.dx},${geo.dy}`;
+}
+
+/**
+ * Image + mask for the fill model, scaled so the long side is `maxSide` (up or down; the model
+ * works best around 1-2 MP). The margin is neutral grey in the image and WHITE in the mask
+ * (BFL convention: white = generate, black = keep). JPEG for the image keeps the upload well
+ * under Vercel's 4.5 MB body limit.
+ */
+// TODO(simplification): one fixed generation size. Ceiling: on big canvases the generated margin
+// is upscaled and looks softer than the original next to it. Upgrade path: generate at a larger
+// size (Flux Fill accepts more) or upscale the fill with the Upscale model before compositing.
+export async function buildFillRequest(
+  img: CanvasImageSource,
+  geo: ExtendGeometry,
+  maxSide = 1440,
+): Promise<{ image: Blob; mask: Blob }> {
+  const s = maxSide / Math.max(geo.canvasW, geo.canvasH);
+  const w = Math.max(1, Math.round(geo.canvasW * s));
+  const h = Math.max(1, Math.round(geo.canvasH * s));
+  const dx = Math.round(geo.dx * s), dy = Math.round(geo.dy * s);
+  const iw = Math.round(geo.imgW * s), ih = Math.round(geo.imgH * s);
+
+  const image = document.createElement("canvas");
+  image.width = w;
+  image.height = h;
+  const ictx = image.getContext("2d")!;
+  ictx.fillStyle = "#808080";
+  ictx.fillRect(0, 0, w, h);
+  ictx.imageSmoothingQuality = "high";
+  ictx.drawImage(img, dx, dy, iw, ih);
+
+  const mask = document.createElement("canvas");
+  mask.width = w;
+  mask.height = h;
+  const mctx = mask.getContext("2d")!;
+  mctx.fillStyle = "#ffffff";
+  mctx.fillRect(0, 0, w, h);
+  mctx.fillStyle = "#000000";
+  mctx.fillRect(dx, dy, iw, ih);
+
+  return { image: await canvasToBlob(image, "image/jpeg", 0.92), mask: await canvasToBlob(mask, "image/png") };
 }
 
 export function extendFilename(name: string): string {

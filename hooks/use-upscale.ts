@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import { UpscaleItem, UpscaleFactor } from "@/lib/types";
 import { revokeSrc } from "@/lib/image-utils";
 import { loadImageFiles } from "@/lib/load-images";
-import { upscaleImage, measureDataUrl, modeSizeError, pickMode, disposeUpscaler, ProcessMode } from "@/lib/upscale";
+import { sizeChangePlan, upscaleImage, measureDataUrl, modeSizeError, pickMode, disposeUpscaler, ProcessMode } from "@/lib/upscale";
 
 type UpscaleStep = "upload" | "processing";
 
@@ -127,21 +127,27 @@ export function useUpscale() {
   }, [scale, enqueue]);
 
   // Re-run at a new scale. Enhance ignores the factor, so those results are kept as-is.
-  const changeScale = useCallback((factor: UpscaleFactor) => {
+  // Switch the shared factor for `base` (the items as they should be) and re-queue what it affects.
+  const rescale = useCallback((factor: UpscaleFactor, base: UpscaleItem[]) => {
     setScale(factor);
-    if (factor === scale || !items.length) return;
     runGen.current++;
     jobs.current = [];
     // Finished enhance results are kept (enhance ignores the factor); everything else,
     // including enhance items that were still queued or in flight, is re-queued.
-    const reset = items.map((it) => {
+    const reset = base.map((it) => {
       if (it.mode === "enhance" && it.status === "done") return it;
       revokeSrc(it.result);
       return { ...it, status: "queued" as const, progress: 0, result: null, resultNatural: null, error: undefined };
     });
     setItems(reset);
     enqueue(reset.flatMap((item, idx) => (item.status === "queued" ? [{ idx, item, factor }] : [])));
-  }, [scale, items, enqueue]);
+  }, [enqueue]);
+
+  const changeScale = useCallback((factor: UpscaleFactor) => {
+    setScale(factor);
+    if (factor === scale || !items.length) return;
+    rescale(factor, items);
+  }, [scale, items, rescale]);
 
   // Queue one item (retry or per-image mode toggle); runs after whatever is in flight.
   const runSingle = useCallback((idx: number, item: UpscaleItem) => {
@@ -168,6 +174,20 @@ export function useUpscale() {
     runSingle(idx, { ...current, mode });
   }, [items, runSingle]);
 
+  /**
+   * One-click output size for one image: "same size" (enhance) or 2x / 4x (upscale). The factor
+   * is shared by the batch, so a new factor goes through rescale with this image already set to
+   * upscale. Calling changeScale + changeMode instead would queue this image with the old factor,
+   * because both read state from the same render.
+   */
+  const changeSize = useCallback((idx: number, mode: ProcessMode, factor: UpscaleFactor) => {
+    const current = items[idx];
+    if (!current) return;
+    const plan = sizeChangePlan(current, mode, factor, scale);
+    if (plan === "rescale") rescale(factor, items.map((it, i) => (i === idx ? { ...it, mode: "upscale" as const } : it)));
+    else if (plan === "mode") changeMode(idx, mode);
+  }, [items, scale, rescale, changeMode]);
+
   const navigateTo = useCallback((idx: number) => {
     if (idx < 0 || idx >= items.length) return;
     setCurrentIdx(idx);
@@ -190,7 +210,7 @@ export function useUpscale() {
   return {
     step, items, scale, modelLoading, loadError,
     doneCount, processingCount, currentIdx, navigateTo,
-    loadAndUpscale, changeScale, changeMode, retryItem, reset,
+    loadAndUpscale, changeScale, changeMode, changeSize, retryItem, reset,
     clearLoadError: () => setLoadError(null), reportLoadError: setLoadError,
   };
 }

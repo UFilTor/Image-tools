@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.0",
     "@tensorflow/tfjs": "^4.11.0",
     "@upscalerjs/esrgan-medium": "^1.0.0",
     "@upscalerjs/esrgan-thick": "^1.0.0",

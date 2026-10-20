@@ -12,10 +12,12 @@ import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
 import { dlUrl, dlAllUpscaled } from "@/lib/download";
-import { upscaleFilename, modeSizeError, ProcessMode } from "@/lib/upscale";
+import { tooLargeForAnySize, upscaleFilename, modeSizeError, ProcessMode } from "@/lib/upscale";
 import { UpscaleFactor, UpscaleItem } from "@/lib/types";
 import { DlIcon, RetryIcon } from "@/components/icons";
 import { CompareSlider } from "@/components/upscale/compare-slider";
+import { FromWebsite } from "@/components/ui/from-website";
+import { LoadError } from "@/components/ui/load-error";
 
 type ZoomMode = "full" | "fit";
 
@@ -42,33 +44,43 @@ function ScaleToggle({ scale, onChange }: { scale: UpscaleFactor; onChange: (s: 
 }
 
 /**
- * Per-image switch between genuine upscaling (bigger output) and enhancement
- * (same size, cleaner pixels). Auto-picked per image, but overridable — a mode
- * is only disabled when its output would exceed the browser-safe size caps.
+ * Per-image output size. Every option runs the same AI clean-up; "Same size" (enhance mode)
+ * shrinks the result back to the source size, 2x and 4x (upscale mode) keep the extra pixels.
+ * Auto-picked per image, but overridable. An option is only disabled when its output would
+ * exceed the browser-safe size caps. The 2x/4x factor is shared by the batch.
  */
-function ModeToggle({
+const SIZE_OPTIONS: { key: string; label: string; mode: ProcessMode; factor?: UpscaleFactor }[] = [
+  { key: "same", label: "Same size", mode: "enhance" },
+  { key: "2", label: "2×", mode: "upscale", factor: 2 },
+  { key: "4", label: "4×", mode: "upscale", factor: 4 },
+];
+
+function SizeToggle({
   item, scale, onChange,
-}: { item: UpscaleItem; scale: UpscaleFactor; onChange: (mode: ProcessMode) => void }) {
+}: { item: UpscaleItem; scale: UpscaleFactor; onChange: (mode: ProcessMode, factor: UpscaleFactor) => void }) {
   const busy = item.status === "processing" || item.status === "queued";
   return (
-    <div role="group" aria-label="Processing mode" className="inline-flex bg-surface rounded-lg border-[1.5px] border-border p-[3px] gap-0.5">
-      {(["upscale", "enhance"] as ProcessMode[]).map((mode) => {
-        const sizeErr = modeSizeError(item.natural, mode, scale);
+    <div role="group" aria-label="Output size" className="inline-flex bg-surface rounded-lg border-[1.5px] border-border p-[3px] gap-0.5">
+      {SIZE_OPTIONS.map((opt) => {
+        const factor = opt.factor ?? scale;
+        const sizeErr = modeSizeError(item.natural, opt.mode, factor);
+        const active = item.mode === opt.mode && (opt.mode === "enhance" || scale === opt.factor);
         return (
           <button
-            key={mode}
+            key={opt.key}
             type="button"
-            onClick={() => onChange(mode)}
+            onClick={() => onChange(opt.mode, factor)}
             disabled={busy || !!sizeErr}
-            aria-pressed={item.mode === mode}
-            title={sizeErr ?? undefined}
+            aria-pressed={active}
+            title={sizeErr ?? (opt.factor ? "Applies to every enlarged image in this batch" : undefined)}
             className={`
               px-3 py-1 rounded-md text-[12px] font-semibold tracking-[0.01em]
               transition-[background-color,color] duration-150 disabled:opacity-40
-              ${item.mode === mode ? "bg-primary text-accent" : "bg-transparent text-text-muted hover:text-primary"}
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
+              ${active ? "bg-primary text-accent" : "bg-transparent text-text-muted hover:text-primary"}
             `}
           >
-            {mode === "upscale" ? `Upscale ${scale}×` : "Enhance"}
+            {opt.label}
           </button>
         );
       })}
@@ -79,7 +91,7 @@ function ModeToggle({
 export default function UpscalePage() {
   const {
     step, items, scale, modelLoading, doneCount, processingCount,
-    loadAndUpscale, changeScale, changeMode, retryItem, reset, reportLoadError,
+    loadAndUpscale, changeScale, changeSize, retryItem, reset, reportLoadError, loadError,
     currentIdx, navigateTo,
   } = useToolState().upscale;
 
@@ -118,13 +130,13 @@ export default function UpscalePage() {
               Upscale
             </h1>
             <p className="text-[15px] text-text-secondary leading-[1.5]">
-              Improve images with AI, right in your browser. Small images get upscaled,
-              large ones get enhanced automatically.
+              Improve images with AI, right in your browser. Small images also get bigger,
+              large ones keep their size.
             </p>
           </div>
 
           <div className="flex items-center justify-center gap-2.5 my-5">
-            <span className="text-[13px] text-text-muted font-medium">Scale</span>
+            <span className="text-[13px] text-text-muted font-medium">Small images</span>
             <ScaleToggle scale={scale} onChange={changeScale} />
           </div>
 
@@ -132,7 +144,7 @@ export default function UpscalePage() {
             {() => (
               <>
                 <div className="text-[15px] font-semibold text-primary mb-1">
-                  Drop images to upscale {scale}×
+                  Drop images to improve
                 </div>
                 <div className="text-[13px] text-text-muted">
                   or click to browse — {ACCEPTED_FORMATS_LABEL}
@@ -140,12 +152,14 @@ export default function UpscalePage() {
               </>
             )}
           </DropZone>
+          <FromWebsite kind="photo" multiple onFiles={loadAndUpscale} />
+          <LoadError message={loadError} />
 
           <p className="text-[12px] text-text-dim text-center mt-4 leading-[1.5]">
-            Runs entirely in your browser — nothing is uploaded. Images under 1000px are upscaled
-            {" "}{scale}× (more pixels + sharper edges); larger images keep their size and get an
-            AI enhancement pass instead. You can switch modes per image afterwards. The model loads
-            on first use, so the first image takes a little longer.
+            Runs entirely in your browser. Nothing is uploaded. Every image gets an AI clean-up with
+            sharper edges and less noise. Images under 1000px also get {scale}× bigger; larger ones keep
+            their size. You can change the size per image afterwards. The model loads on first use, so
+            the first image takes a little longer.
           </p>
         </div>
       </div>
@@ -160,7 +174,7 @@ export default function UpscalePage() {
         <div className="flex items-center gap-2.5 mb-1 flex-wrap justify-center">
           <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Compare</span>
           {current && (
-            <ModeToggle item={current} scale={scale} onChange={(mode) => changeMode(currentIdx, mode)} />
+            <SizeToggle item={current} scale={scale} onChange={(mode, factor) => changeSize(currentIdx, mode, factor)} />
           )}
           {isMulti && (
             <span className="text-[13px] text-text-muted font-medium tabular-nums">
@@ -221,12 +235,12 @@ export default function UpscalePage() {
                     className="relative mx-auto"
                     style={{ width: current.resultNatural.w, height: current.resultNatural.h }}
                   >
-                    <CompareSlider before={current.src} after={current.result!} alt={current.name} afterLabel={current.mode === "enhance" ? "Enhanced" : "Upscaled"} />
+                    <CompareSlider before={current.src} after={current.result!} alt={current.name} afterLabel={current.mode === "enhance" ? "Improved" : `Improved ${scale}×`} />
                   </div>
                 </div>
               ) : (
                 <div className="relative" style={{ height: "min(62vh, 720px)" }}>
-                  <CompareSlider before={current.src} after={current.result!} alt={current.name} afterLabel={current.mode === "enhance" ? "Enhanced" : "Upscaled"} />
+                  <CompareSlider before={current.src} after={current.result!} alt={current.name} afterLabel={current.mode === "enhance" ? "Improved" : `Improved ${scale}×`} />
                 </div>
               )
             ) : (
@@ -258,12 +272,22 @@ export default function UpscalePage() {
                     className="absolute inset-0 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 px-3 text-center"
                     style={{ background: "var(--overlay-error)" }}
                   >
-                    <span className="text-[13px] text-white font-semibold leading-snug">
-                      {current.error || "Couldn't upscale this one"}
-                    </span>
-                    <Button size="sm" variant="danger" onClick={() => retryItem(currentIdx)}>
-                      <RetryIcon /> Retry
-                    </Button>
+                    {tooLargeForAnySize(current.natural) ? (
+                      // Retry can't help here: say what to do instead.
+                      <span className="text-[13px] text-white font-semibold leading-snug max-w-[360px]">
+                        This image is too large to improve here (over about 10 megapixels). Make it smaller
+                        first, for example with Crop, then add it again.
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-[13px] text-white font-semibold leading-snug">
+                          {current.error || "Couldn't upscale this one"}
+                        </span>
+                        <Button size="sm" variant="danger" onClick={() => retryItem(currentIdx)}>
+                          <RetryIcon /> Retry
+                        </Button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -286,7 +310,6 @@ export default function UpscalePage() {
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
-          <ScaleToggle scale={scale} onChange={changeScale} />
           <ConfirmButton
             armed={resetConfirm.armed}
             onFire={resetConfirm.fire}

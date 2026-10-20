@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { SHORTCUT_MAP } from "@/lib/constants";
 import { isOverlayOpen } from "@/lib/overlay-state";
+import { isControlTarget } from "@/lib/keyboard";
 
 interface ShortcutActions {
   onEnter?: () => void;
@@ -42,7 +43,9 @@ export function useKeyboardShortcuts(actions: ShortcutActions = {}) {
 
       if (overlayOpen) return;
 
-      if (e.key === "Enter" && a.onEnter) {
+      // Enter on a focused button, link or select belongs to that control (keyboard users press
+      // buttons with Enter); only a "free" Enter triggers the page action.
+      if (e.key === "Enter" && a.onEnter && !isControlTarget(e.target)) {
         e.preventDefault();
         a.onEnter();
         return;

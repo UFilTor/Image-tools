@@ -17,6 +17,8 @@ import { SizeInput } from "@/components/ui/size-input";
 import { dlCrop, dlAllCropQueue } from "@/lib/download";
 import { cropFilename } from "@/lib/image-utils";
 import { DlIcon } from "@/components/icons";
+import { FromWebsite } from "@/components/ui/from-website";
+import { LoadError } from "@/components/ui/load-error";
 
 export default function CropPage() {
   const {
@@ -24,7 +26,7 @@ export default function CropPage() {
     crop, setCrop, src, name, nat, disp,
     zoom, setZoom, pan, setPan,
     cropPx, cropPy, isMulti,
-    loadImage, loadWithRatio, pickRatio, navigateTo, goToRatio, reset, reportLoadError,
+    loadImage, loadWithRatio, pickRatio, navigateTo, goToRatio, reset, reportLoadError, loadError,
   } = useToolState().crop;
   const { startDrag } = useCropDrag();
   useClipboardPaste(step === "upload" ? loadImage : null, reportLoadError);
@@ -56,6 +58,8 @@ export default function CropPage() {
             </p>
           </div>
           <RatioDropZones onDropWithRatio={loadWithRatio} />
+          <FromWebsite kind="photo" multiple onFiles={loadImage} />
+          <LoadError message={loadError} />
         </div>
       )}
 

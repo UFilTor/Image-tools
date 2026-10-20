@@ -18,6 +18,8 @@ import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
 import { dlCrop, dlAll } from "@/lib/download";
 import { cropFilename } from "@/lib/image-utils";
 import { DlIcon, RetryIcon, GripIcon, RatioIcon } from "@/components/icons";
+import { FromWebsite } from "@/components/ui/from-website";
+import { LoadError } from "@/components/ui/load-error";
 
 export default function SmartCropPage() {
   const {
@@ -27,7 +29,7 @@ export default function SmartCropPage() {
     zoom, setZoom, pan, setPan,
     doneCount, errCount, analyzingCount,
     loadImages, loadAndAnalyzeWithRatio, startAnalysis, batchRecrop, retryItem,
-    reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset, reportLoadError,
+    reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset, reportLoadError, loadError,
   } = useToolState().smartCrop;
   const { startDrag } = useCropDrag();
   useClipboardPaste(step === "upload" ? loadImages : null, reportLoadError);
@@ -62,6 +64,8 @@ export default function SmartCropPage() {
             </p>
           </div>
           <RatioDropZones onDropWithRatio={loadAndAnalyzeWithRatio} />
+          <FromWebsite kind="photo" multiple onFiles={loadImages} />
+          <LoadError message={loadError} />
         </div>
       </div>
     );

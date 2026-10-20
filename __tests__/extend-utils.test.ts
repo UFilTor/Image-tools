@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { extendGeometry, extendFilename } from "@/lib/extend-utils";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { extendGeometry, extendFilename, hasMargin, aiFillKey, renderExtended, buildFillRequest } from "@/lib/extend-utils";
 
 describe("extendGeometry", () => {
   it("widens a landscape image to a square, centered", () => {
@@ -98,3 +98,67 @@ describe("previewGeometry", () => {
     expect(p.canvasH).toBe(Math.round(geo.canvasH * s));
   });
 });
+
+describe("AI fill helpers", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("hasMargin is false only when the canvas equals the image", () => {
+    expect(hasMargin(extendGeometry({ w: 200, h: 200 }, 1, 0))).toBe(false);
+    expect(hasMargin(extendGeometry({ w: 200, h: 100 }, 1, 0))).toBe(true);
+    expect(hasMargin(extendGeometry({ w: 200, h: 200 }, 1, 0.1))).toBe(true);
+  });
+
+  it("aiFillKey is stable for the same image and geometry, and changes with either", () => {
+    const geo = extendGeometry({ w: 200, h: 100 }, 1, 0);
+    expect(aiFillKey("blob:a", geo)).toBe(aiFillKey("blob:a", extendGeometry({ w: 200, h: 100 }, 1, 0)));
+    expect(aiFillKey("blob:a", geo)).not.toBe(aiFillKey("blob:b", geo));
+    expect(aiFillKey("blob:a", geo)).not.toBe(aiFillKey("blob:a", extendGeometry({ w: 200, h: 100 }, 54 / 17, 0)));
+  });
+
+  it("draws the generated fill over the whole canvas, then the sharp original on top", () => {
+    const draw = vi.spyOn(CanvasRenderingContext2D.prototype, "drawImage");
+    const img = new Image();
+    const ai = document.createElement("canvas");
+    const geo = extendGeometry({ w: 200, h: 100 }, 1, 0);
+    renderExtended(img, geo, { style: "ai", color: "#ffffff", ai });
+    expect(draw).toHaveBeenCalledTimes(2);
+    expect(draw.mock.calls[0]).toEqual([ai, 0, 0, geo.canvasW, geo.canvasH]);
+    expect(draw.mock.calls[1]).toEqual([img, geo.dx, geo.dy, geo.imgW, geo.imgH]);
+  });
+
+  it("falls back to the mirror fill while no AI fill exists", () => {
+    const draw = vi.spyOn(CanvasRenderingContext2D.prototype, "drawImage");
+    const geo = extendGeometry({ w: 200, h: 100 }, 1, 0);
+    renderExtended(new Image(), geo, { style: "ai", color: "#ffffff", ai: null });
+    // Mirror tiles (3 rows of the 200x100 image cover 200x200) plus the original on top
+    expect(draw.mock.calls.length).toBeGreaterThan(2);
+  });
+
+  it("builds the fill mask WHITE where the model paints and BLACK over the original", async () => {
+    // Flux Fill reads white = generate, black = keep; a flipped or transparent mask makes a
+    // paid call return black margins without any error.
+    const fills: { style: string; rect: number[] }[] = [];
+    vi.spyOn(CanvasRenderingContext2D.prototype, "fillRect").mockImplementation(function (
+      this: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+    ) {
+      fills.push({ style: String(this.fillStyle).toLowerCase(), rect: [x, y, w, h] });
+    });
+    const geo = extendGeometry({ w: 200, h: 100 }, 54 / 17, 0); // wide: margins left and right
+    await buildFillRequest(new Image(), geo, 1440);
+    const s = 1440 / Math.max(geo.canvasW, geo.canvasH);
+    const W = Math.round(geo.canvasW * s), H = Math.round(geo.canvasH * s);
+    // image backdrop, then the mask: white everywhere, black over the original
+    expect(fills.map((f) => f.style)).toEqual(["#808080", "#ffffff", "#000000"]);
+    expect(fills[1].rect).toEqual([0, 0, W, H]);
+    const [dx, dy, iw, ih] = fills[2].rect;
+    expect(dx).toBeGreaterThan(0);
+    expect(dy).toBe(0);
+    expect(dx + iw).toBeLessThan(W);
+    expect(ih).toBe(H);
+  });
+});
+

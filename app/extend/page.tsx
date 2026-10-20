@@ -14,6 +14,8 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Badge } from "@/components/ui/badge";
 import { dlExtended, dlAllExtended } from "@/lib/download";
 import { DlIcon } from "@/components/icons";
+import { FromWebsite } from "@/components/ui/from-website";
+import { LoadError } from "@/components/ui/load-error";
 
 export default function ExtendPage() {
   const {
@@ -22,8 +24,9 @@ export default function ExtendPage() {
     padding, setPadding,
     fillStyle, setFillStyle,
     fillColor, setFillColor,
+    gatewayAvailable, aiFill, generateFill, aiFor, aiBlocked,
     isMulti,
-    loadImage, loadWithRatio, navigateTo, reset, reportLoadError,
+    loadImage, loadWithRatio, navigateTo, reset, reportLoadError, loadError,
   } = useToolState().extend;
 
   useClipboardPaste(step === "upload" ? loadImage : null, reportLoadError);
@@ -31,7 +34,7 @@ export default function ExtendPage() {
 
   const resetConfirm = useConfirm({ onConfirm: reset, count: queue.length, threshold: 1 });
 
-  const fill = { style: fillStyle, color: fillColor };
+  const fill = { style: fillStyle, color: fillColor, ai: aiFill?.img ?? null };
   const download = () => current && dl.run(() => dlExtended(current, ratio, padding, fill));
 
   useKeyboardShortcuts({
@@ -54,6 +57,8 @@ export default function ExtendPage() {
             </p>
           </div>
           <RatioDropZones onDropWithRatio={loadWithRatio} />
+          <FromWebsite kind="photo" multiple onFiles={loadImage} />
+          <LoadError message={loadError} />
         </div>
       )}
 
@@ -78,6 +83,7 @@ export default function ExtendPage() {
                 padding={padding}
                 fillStyle={fillStyle}
                 fillColor={fillColor}
+                aiFill={aiFill?.img ?? null}
               />
             </div>
             <ExtendControls
@@ -90,6 +96,13 @@ export default function ExtendPage() {
               setFillStyle={setFillStyle}
               fillColor={fillColor}
               setFillColor={setFillColor}
+              ai={{
+                available: gatewayAvailable,
+                status: aiFill?.status ?? null,
+                error: aiFill?.error,
+                blocked: aiBlocked,
+                onGenerate: generateFill,
+              }}
             />
           </div>
 
@@ -113,11 +126,11 @@ export default function ExtendPage() {
             >
               New images
             </ConfirmButton>
-            <Button variant="primary" onClick={download} disabled={dl.busy}>
+            <Button variant="primary" onClick={download} disabled={dl.busy || aiFill?.status === "busy"}>
               <DlIcon /> Download
             </Button>
             {isMulti && (
-              <Button variant="primary" onClick={() => dl.run(() => dlAllExtended(queue, ratio, padding, fill))} disabled={dl.busy}>
+              <Button variant="primary" onClick={() => dl.run(() => dlAllExtended(queue, ratio, padding, fill, aiFor))} disabled={dl.busy || aiFill?.status === "busy"}>
                 <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
               </Button>
             )}

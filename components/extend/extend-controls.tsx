@@ -2,6 +2,17 @@
 
 import { RATIOS } from "@/lib/constants";
 import { FillStyle } from "@/lib/extend-utils";
+import { Button } from "@/components/ui/button";
+
+interface AiFillControl {
+  /** AI Gateway configured; the "AI fill" option is hidden otherwise */
+  available: boolean;
+  status: "busy" | "done" | "error" | null;
+  error?: string;
+  /** Why Generate can't run (no margin, too large), or null */
+  blocked: string | null;
+  onGenerate: () => void;
+}
 
 interface ExtendControlsProps {
   ratio: number | null;
@@ -13,6 +24,7 @@ interface ExtendControlsProps {
   setFillStyle: (v: FillStyle) => void;
   fillColor: string;
   setFillColor: (v: string) => void;
+  ai: AiFillControl;
 }
 
 const FILL_OPTIONS: { key: FillStyle; label: string }[] = [
@@ -29,8 +41,9 @@ const COLOR_PRESETS = [
 
 export function ExtendControls({
   ratio, ratioLabel, setRatio, padding, setPadding,
-  fillStyle, setFillStyle, fillColor, setFillColor,
+  fillStyle, setFillStyle, fillColor, setFillColor, ai,
 }: ExtendControlsProps) {
+  const fillOptions = ai.available ? [...FILL_OPTIONS, { key: "ai" as const, label: "AI fill" }] : FILL_OPTIONS;
   return (
     <div className="bg-surface border border-border rounded-2xl px-[22px] py-5 flex flex-col gap-[18px] w-full max-w-[420px]">
       {/* Target ratio */}
@@ -93,7 +106,7 @@ export function ExtendControls({
           role="group"
           className="inline-flex border border-border rounded-button overflow-hidden text-[13px] font-semibold"
         >
-          {FILL_OPTIONS.map((opt) => (
+          {fillOptions.map((opt) => (
             <button
               key={opt.key}
               type="button"
@@ -140,6 +153,34 @@ export function ExtendControls({
         )}
         {fillStyle === "mirror" && (
           <p className="text-[11px] text-text-muted mt-3">The image edges are reflected outward to fill the margin.</p>
+        )}
+        {fillStyle === "ai" && (
+          <div className="mt-3 flex flex-col gap-2">
+            <p className="text-[11px] text-text-secondary">
+              An image model paints new scenery into the margin. The original stays untouched. About $0.05 per image.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                variant={ai.status === "done" ? "outline" : "primary"}
+                onClick={ai.onGenerate}
+                disabled={ai.status === "busy" || !!ai.blocked}
+              >
+                {ai.status === "busy" ? "Generating…" : ai.status === "done" ? "Regenerate" : "Generate fill"}
+              </Button>
+              <span className="text-[11px] text-text-secondary" role="status">
+                {ai.status === "busy"
+                  ? "Takes about 20-30 seconds."
+                  : ai.status !== "done" && !ai.blocked
+                    ? "Preview and download use a mirror fill until you generate."
+                    : ""}
+              </span>
+            </div>
+            {ai.blocked && <p className="text-[11px] text-text-secondary">{ai.blocked}</p>}
+            {ai.error && ai.status !== "busy" && (
+              <p className="text-xs text-error font-medium" role="alert">{ai.error}</p>
+            )}
+          </div>
         )}
       </div>
     </div>

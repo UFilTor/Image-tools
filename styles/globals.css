@@ -21,7 +21,7 @@
   /* Text */
   --text: #17181A;
   --text-secondary: #3A4A3F;
-  --text-muted: #99968A;
+  --text-muted: #6B685F; /* 5.1:1 on --bg, 4.5:1 on --surface-alt (was #99968A, 2.7:1) */
   --text-dim: #B9B6A8;
 
   /* Borders (alpha-on-cream) */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
+import { tooLargeForAnySize, sizeChangePlan,
   upscaleFilename,
   predictUpscaleSize,
   upscaleSizeError,
@@ -102,3 +102,33 @@ describe("upscaleFilename", () => {
     expect(upscaleFilename("", 2, "enhance")).toBe("enhanced.png");
   });
 });
+
+describe("sizeChangePlan", () => {
+  const done = (mode: "upscale" | "enhance") => ({ status: "done", mode });
+
+  it("rescales the batch when an image switches to a new factor", () => {
+    expect(sizeChangePlan(done("enhance"), "upscale", 4, 2)).toBe("rescale");
+    expect(sizeChangePlan(done("upscale"), "upscale", 4, 2)).toBe("rescale");
+  });
+
+  it("re-runs just this image for a mode switch at the current factor", () => {
+    expect(sizeChangePlan(done("enhance"), "upscale", 2, 2)).toBe("mode");
+    expect(sizeChangePlan(done("upscale"), "enhance", 2, 2)).toBe("mode");
+  });
+
+  it("does nothing for a busy image or the size it already has", () => {
+    expect(sizeChangePlan({ status: "processing", mode: "enhance" }, "upscale", 4, 2)).toBe("none");
+    expect(sizeChangePlan({ status: "queued", mode: "enhance" }, "upscale", 2, 2)).toBe("none");
+    expect(sizeChangePlan(done("upscale"), "upscale", 2, 2)).toBe("none");
+    expect(sizeChangePlan(done("enhance"), "enhance", 4, 2)).toBe("none");
+  });
+});
+
+describe("tooLargeForAnySize", () => {
+  it("is true only when Same size, 2x and 4x all exceed the caps", () => {
+    expect(tooLargeForAnySize({ w: 8000, h: 6000 })).toBe(true);
+    expect(tooLargeForAnySize({ w: 1167, h: 754 })).toBe(false);
+    expect(tooLargeForAnySize({ w: 180, h: 60 })).toBe(false);
+  });
+});
+

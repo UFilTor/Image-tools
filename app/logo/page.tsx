@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { useToolState } from "@/components/tool-state-provider";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { ACCEPTED_FORMATS_LABEL } from "@/lib/constants";
@@ -10,21 +11,47 @@ import { DropZone } from "@/components/ui/drop-zone";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { LogoControls } from "@/components/logo/logo-controls";
+import { ColorEdits } from "@/components/logo/color-edits";
+import { AiAssist } from "@/components/logo/ai-assist";
+import { PreviewTools } from "@/components/logo/preview-tools";
 import { dlCanvas } from "@/lib/download";
 import { DlIcon } from "@/components/icons";
+import { FromWebsite } from "@/components/ui/from-website";
+import { LoadError } from "@/components/ui/load-error";
+import { checkerBg } from "@/lib/constants";
 
 export default function LogoPage() {
+  const logo = useToolState().logo;
   const {
     step, src, name, nat, isTransparent,
-    removeBgEnabled, setRemoveBgEnabled,
+    bgMode, setBgMode, bgStatus,
     recolor, setRecolor, customHex, setCustomHex,
-    preview, loadLogo, updateLogo, getExportCanvas, reset, reportLoadError,
-  } = useToolState().logo;
+    edits, activeEditId, tool, cancelTool, pickAt, setEditBox, claude, askClaude,
+    redraw, requestRedraw, acceptRedraw, discardRedraw, editError, emptyResult,
+    preview, loadLogo, getExportCanvas, reset, reportLoadError, loadError,
+  } = logo;
+  const previewImgRef = useRef<HTMLImageElement>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const activeBox = edits.find((e) => e.id === activeEditId)?.box ?? null;
 
   useClipboardPaste(step === "upload" ? loadLogo : null, reportLoadError);
   const dl = useDownload();
 
-  const resetConfirm = useConfirm({ onConfirm: reset, count: src ? 1 : 0, threshold: 1 });
+  const resetConfirm = useConfirm({
+    onConfirm: () => {
+      setShowOriginal(false);
+      reset();
+    },
+    count: src ? 1 : 0,
+    threshold: 1,
+  });
+  // Only an AI run for the mode that is selected blocks the download; an abandoned run doesn't.
+  const exportBusy = bgStatus.busy && bgMode === "ai";
+  // Tools work on the processed preview, so starting one leaves "Show original".
+  const withProcessed = (start: () => void) => () => {
+    setShowOriginal(false);
+    start();
+  };
 
   const handleDownload = () => {
     const canvas = getExportCanvas();
@@ -35,8 +62,9 @@ export default function LogoPage() {
   };
 
   useKeyboardShortcuts({
-    onEnter: step === "edit" && !dl.busy ? handleDownload : undefined,
-    onEscape: step === "edit" ? resetConfirm.fire : undefined,
+    onEnter: step === "edit" && !dl.busy && !exportBusy ? handleDownload : undefined,
+    // Escape leaves the pick/area tool first; only with no tool active does it arm "New logo".
+    onEscape: step === "edit" ? (tool ? cancelTool : resetConfirm.fire) : undefined,
   });
 
   return (
@@ -68,78 +96,115 @@ export default function LogoPage() {
               </>
             )}
           </DropZone>
+          <FromWebsite kind="logo" onFiles={loadLogo} />
+          <LoadError message={loadError} />
         </div>
       )}
 
       {step === "edit" && src && preview && (
         <div className="animate-fadeUp">
-          <div className="text-center mb-6">
-            <h1 className="font-display uppercase font-bold text-[26px] text-primary tracking-[0.02em] leading-none">
+          <div className="flex items-baseline justify-center gap-2.5 mb-3 flex-wrap">
+            <h1 className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em] leading-none">
               Logo
             </h1>
-            <p className="text-[13px] text-text-muted mt-1.5">{name} · {nat.w} × {nat.h}px</p>
+            <p className="text-[13px] text-text-muted">{name} · {nat.w} × {nat.h}px</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            {/* Original */}
-            <div>
-              <p className="text-[11px] font-bold text-text-muted mb-2.5 uppercase tracking-[0.12em]">Original</p>
-              <div className="border border-border rounded-2xl overflow-hidden bg-surface flex items-center justify-center p-6 aspect-[4/3]">
-                <img
-                  src={src}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  className="max-w-full max-h-full object-contain"
-                  draggable={false}
-                />
-              </div>
-            </div>
-
-            {/* Processed */}
-            <div>
-              <div className="flex items-center justify-between mb-2.5">
-                <p className="text-[11px] font-bold text-text-muted uppercase tracking-[0.12em]">Processed</p>
-                <p className="hidden md:block text-[10px] text-text-dim">Hover to compare</p>
+          {/* Stage: preview left, controls right (same pattern as Extend). On lg screens both share
+              one height that fits the viewport, and only the controls column scrolls if needed. */}
+          <div className="flex flex-col lg:flex-row items-center lg:items-start gap-5 w-full justify-center mb-4">
+            <div className="flex-1 w-full max-w-[720px]">
+              <div className="flex items-center justify-between mb-2 min-h-[26px]">
+                <p className="text-[11px] font-bold text-text-muted uppercase tracking-[0.12em]">
+                  {showOriginal ? "Original" : "Processed"}
+                </p>
+                <div className="flex items-center gap-3">
+                  <p className="hidden md:block text-[10px] text-text-dim">{tool || showOriginal ? "" : "Hover to compare"}</p>
+                  <button
+                    type="button"
+                    aria-pressed={showOriginal}
+                    disabled={!!tool}
+                    onClick={() => setShowOriginal((v) => !v)}
+                    className={`px-2.5 py-1 rounded-button border-[1.5px] text-[11px] font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${
+                      showOriginal ? "border-primary bg-primary-bg text-primary" : "border-border text-text-secondary hover:border-border-hover"
+                    }`}
+                  >
+                    Show original
+                  </button>
+                </div>
               </div>
               <div
-                className="group relative border border-border rounded-2xl overflow-hidden flex items-center justify-center p-6 aspect-[4/3]"
-                style={{
-                  background:
-                    "repeating-conic-gradient(var(--checker-tint) 0% 25%, var(--surface) 0% 50%) 50% / 16px 16px",
-                }}
+                className="group relative border border-border rounded-2xl overflow-hidden flex items-center justify-center p-6 aspect-[4/3] lg:aspect-auto lg:h-[calc(100dvh-272px)] lg:min-h-[340px]"
+                style={{ background: checkerBg() }}
               >
                 <img
-                  src={preview}
+                  ref={previewImgRef}
+                  src={showOriginal ? src : preview}
                   alt=""
-                  loading="lazy"
                   decoding="async"
-                  className="max-w-full max-h-full object-contain transition-opacity duration-150 md:group-hover:opacity-0"
+                  className={`w-full h-full object-contain transition-opacity duration-150 ${tool || showOriginal ? "" : "md:group-hover:opacity-0"}`}
                   draggable={false}
                 />
-                <img
-                  src={src}
-                  alt=""
-                  aria-hidden="true"
-                  className="hidden md:block absolute inset-0 m-auto max-w-[calc(100%-3rem)] max-h-[calc(100%-3rem)] object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100 pointer-events-none"
-                  draggable={false}
+                {/* Hover-to-compare is off while a tool is on, so you see what you click. */}
+                {!tool && !showOriginal && (
+                  <img
+                    src={src}
+                    alt=""
+                    aria-hidden="true"
+                    className="hidden md:block absolute inset-6 w-[calc(100%-3rem)] h-[calc(100%-3rem)] object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100 pointer-events-none"
+                    draggable={false}
+                  />
+                )}
+                <PreviewTools
+                  imgRef={previewImgRef}
+                  tool={showOriginal ? null : tool}
+                  box={activeBox}
+                  onPick={pickAt}
+                  onBox={setEditBox}
                 />
               </div>
             </div>
-          </div>
 
-          {/* Controls */}
-          <div className="max-w-[500px] mx-auto mb-6">
-            <LogoControls
-              isTransparent={isTransparent}
-              removeBgEnabled={removeBgEnabled}
-              setRemoveBgEnabled={setRemoveBgEnabled}
-              recolor={recolor}
-              setRecolor={setRecolor}
-              customHex={customHex}
-              setCustomHex={setCustomHex}
-              onUpdate={updateLogo}
-            />
+            {/* Controls */}
+            <div className="w-full max-w-[420px] shrink-0 flex flex-col gap-4 lg:h-[calc(100dvh-238px)] lg:min-h-[374px] lg:overflow-y-auto lg:pr-1">
+              {editError && <p className="text-xs text-error font-medium" role="alert">{editError}</p>}
+              {(claude.available || redraw.available) && (
+                <AiAssist
+                  claude={claude}
+                  onChangeColors={askClaude}
+                  redraw={redraw}
+                  onRedraw={requestRedraw}
+                  onAccept={acceptRedraw}
+                  onDiscard={discardRedraw}
+                  currentSrc={src}
+                />
+              )}
+              <LogoControls
+                isTransparent={isTransparent}
+                bgMode={bgMode}
+                setBgMode={setBgMode}
+                bgStatus={bgStatus}
+                emptyResult={emptyResult}
+                recolor={recolor}
+                setRecolor={setRecolor}
+                customHex={customHex}
+                setCustomHex={setCustomHex}
+              >
+                <ColorEdits
+                  edits={edits}
+                  activeEditId={activeEditId}
+                  setActiveEditId={logo.setActiveEditId}
+                  updateEdit={logo.updateEdit}
+                  removeEdit={logo.removeEdit}
+                  tool={tool}
+                  toolHint={logo.toolHint}
+                  startPick={withProcessed(logo.startPick)}
+                  startBox={(id) => withProcessed(() => logo.startBox(id))()}
+                  startErase={withProcessed(logo.startErase)}
+                  cancelTool={cancelTool}
+                />
+              </LogoControls>
+            </div>
           </div>
 
           {/* Action buttons */}
@@ -151,7 +216,7 @@ export default function LogoPage() {
             >
               New logo
             </ConfirmButton>
-            <Button variant="primary" onClick={handleDownload} disabled={dl.busy}>
+            <Button variant="primary" onClick={handleDownload} disabled={dl.busy || exportBusy}>
               <DlIcon /> Download PNG
             </Button>
           </div>

@@ -11,13 +11,15 @@ interface ExtendPreviewProps {
   padding: number;
   fillStyle: FillStyle;
   fillColor: string;
+  /** Generated background for the "ai" fill style */
+  aiFill?: CanvasImageSource | null;
 }
 
 // Subtle checkerboard so transparent/light fills read against the canvas.
 const CHECKER =
   "repeating-conic-gradient(#eceae4 0% 25%, #f7f6f2 0% 50%) 50% / 20px 20px";
 
-export function ExtendPreview({ src, natural, ratio, padding, fillStyle, fillColor }: ExtendPreviewProps) {
+export function ExtendPreview({ src, natural, ratio, padding, fillStyle, fillColor, aiFill = null }: ExtendPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
 
@@ -37,8 +39,8 @@ export function ExtendPreview({ src, natural, ratio, padding, fillStyle, fillCol
     const target = canvasRef.current;
     if (!img || !target) return;
     const geo = previewGeometry(extendGeometry(natural, ratio, padding));
-    renderExtended(img, geo, { style: fillStyle, color: fillColor }, target);
-  }, [img, natural, ratio, padding, fillStyle, fillColor]);
+    renderExtended(img, geo, { style: fillStyle, color: fillColor, ai: aiFill }, target);
+  }, [img, natural, ratio, padding, fillStyle, fillColor, aiFill]);
 
   return (
     <div
