@@ -5,6 +5,7 @@ import { MultiCropItem, CropRect } from "@/lib/types";
 import { editorDispSize, rescaleCrop, revokeSrc, LoadedImage } from "@/lib/image-utils";
 import { loadImageFiles } from "@/lib/load-images";
 import { centeredOnBbox } from "@/lib/crop-math";
+import { safeZoneForRatio } from "@/lib/storefront";
 import { detectFocalWithFallback } from "@/lib/ai-client";
 import { useWindowResize } from "./use-window-resize";
 
@@ -72,7 +73,7 @@ export function useMultiCrop() {
       if (item.focal?.bbox && !item.focal?.error) {
         applyResult(item.id, ratioVal, (it) => ({
           status: "done",
-          crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, it.focal!.bbox, it.focal?.focalPoint),
+          crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, it.focal!.bbox, it.focal?.focalPoint, safeZoneForRatio(ratioVal)),
         }));
         continue;
       }
@@ -80,7 +81,7 @@ export function useMultiCrop() {
       if (myGen !== analysisGen.current) return;
       applyResult(item.id, ratioVal, (it) => ({
         focal, status: focal.error ? "error" : "done",
-        crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, focal.bbox, focal.focalPoint),
+        crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, focal.bbox, focal.focalPoint, safeZoneForRatio(ratioVal)),
       }));
     }
   }, [applyResult]);
@@ -117,7 +118,7 @@ export function useMultiCrop() {
       if (it.focal?.bbox && !it.focal?.error) {
         return {
           ...it, ratio: effR, status: "done" as const,
-          crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, it.focal.bbox, it.focal.focalPoint),
+          crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, it.focal.bbox, it.focal.focalPoint, safeZoneForRatio(ratioVal)),
         };
       }
       return { ...it, ratio: effR, status: "analyzing" as const };
@@ -139,7 +140,7 @@ export function useMultiCrop() {
       if (myGen !== analysisGen.current) return;
       applyResult(id, null, (it) => ({
         focal, status: focal.error ? "error" : "done",
-        crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratio, focal.bbox, focal.focalPoint),
+        crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratio, focal.bbox, focal.focalPoint, safeZoneForRatio(ratio)),
       }));
     })();
   }, [items, ratio, applyResult]);

@@ -15,10 +15,12 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Badge } from "@/components/ui/badge";
 import { SizeInput } from "@/components/ui/size-input";
 import { dlCrop, dlAllCropQueue } from "@/lib/download";
-import { cropFilename } from "@/lib/image-utils";
+import { cropFilename, cropToBlob } from "@/lib/image-utils";
 import { DlIcon } from "@/components/icons";
 import { FromWebsite } from "@/components/ui/from-website";
 import { LoadError } from "@/components/ui/load-error";
+import { SendTo } from "@/components/ui/send-to";
+import { SizeWarning } from "@/components/ui/size-warning";
 
 export default function CropPage() {
   const {
@@ -85,6 +87,7 @@ export default function CropPage() {
               </span>
             )}
             <SizeInput cropPx={cropPx} cropPy={cropPy} ratio={ratio} crop={crop} setCrop={setCrop} disp={disp} nat={nat} />
+            <SizeWarning ratio={ratio} widthPx={cropPx} fileName={cropFilename(name)} getBlob={() => cropToBlob(src, nat, disp, crop)} />
           </div>
           <ZoomableEditor
             src={src} disp={disp} crop={crop} setCrop={setCrop} ratio={ratio}
@@ -118,6 +121,9 @@ export default function CropPage() {
               <Button variant="primary" onClick={() => dl.run(() => dlAllCropQueue(queue))} disabled={dl.busy}>
                 <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
               </Button>
+            )}
+            {src && (
+              <SendTo from="crop" fileName={cropFilename(name)} getBlob={() => cropToBlob(src, nat, disp, crop)} disabled={dl.busy} />
             )}
           </div>
           {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}

@@ -9,6 +9,9 @@ import { canvasToBlob } from "./image-utils";
  */
 
 export const REDRAW_MAX_ASPECT = 21 / 9;
+
+/** Redraw instruction when the goal is only a crisper copy (Upscale's "Redraw in Logo"). */
+export const CRISPER_INSTRUCTION = "Keep every letter, shape and color exactly as they are";
 /** Neutral backdrop for transparent logos, so white and black parts both stay visible. */
 const NEUTRAL: RGB = [128, 128, 128];
 

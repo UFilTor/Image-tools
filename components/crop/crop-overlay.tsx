@@ -1,10 +1,14 @@
 "use client";
 
 import { CropRect, CropDragType } from "@/lib/types";
+import type { SafeZone } from "@/lib/storefront";
+import { SafeZoneBox } from "./safe-zone-box";
 
 interface CropOverlayProps {
   crop: CropRect;
   onDown: (e: React.MouseEvent, type: CropDragType) => void;
+  /** Storefront safe zone for the current preset; drawn as a dashed box inside the crop */
+  safe?: SafeZone | null;
 }
 
 function Handle({
@@ -37,7 +41,7 @@ function Handle({
   );
 }
 
-export function CropOverlay({ crop, onDown }: CropOverlayProps) {
+export function CropOverlay({ crop, onDown, safe = null }: CropOverlayProps) {
   const { x, y, w, h } = crop;
 
   return (
@@ -75,6 +79,9 @@ export function CropOverlay({ crop, onDown }: CropOverlayProps) {
             style={{ top: `${i * 33.33}%`, background: "rgba(255,255,255,0.2)" }}
           />,
         ])}
+
+        {/* Storefront safe zone: the centered part every common screen shows */}
+        {safe && <SafeZoneBox zone={safe} />}
 
         {/* Corner handles */}
         <Handle style={{ top: -6, left: -6 }} type="tl" cursor="nwse-resize" onDown={onDown} />

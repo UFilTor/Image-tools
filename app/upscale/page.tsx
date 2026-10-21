@@ -18,6 +18,8 @@ import { DlIcon, RetryIcon } from "@/components/icons";
 import { CompareSlider } from "@/components/upscale/compare-slider";
 import { FromWebsite } from "@/components/ui/from-website";
 import { LoadError } from "@/components/ui/load-error";
+import { SendTo } from "@/components/ui/send-to";
+import { RedrawHint } from "@/components/upscale/redraw-hint";
 
 type ZoomMode = "full" | "fit";
 
@@ -212,6 +214,7 @@ export default function UpscalePage() {
           {modelLoading && processingCount > 0 && (
             <span className="text-xs text-text-muted animate-pulse">Loading AI model…</span>
           )}
+          {current && <RedrawHint src={current.src} name={current.name} />}
         </div>
 
         {/* Stage */}
@@ -324,6 +327,14 @@ export default function UpscalePage() {
             <Button variant="primary" onClick={() => dl.run(() => dlAllUpscaled(items, scale))} disabled={doneCount === 0 || dl.busy}>
               <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
             </Button>
+          )}
+          {current && (
+            <SendTo
+              from="upscale"
+              fileName={upscaleFilename(current.name, scale, current.mode)}
+              getBlob={async () => (current.result ? (await fetch(current.result)).blob() : null)}
+              disabled={!isDone || dl.busy}
+            />
           )}
         </div>
         {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}

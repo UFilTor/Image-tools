@@ -12,10 +12,12 @@ import { ExtendControls } from "@/components/extend/extend-controls";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Badge } from "@/components/ui/badge";
-import { dlExtended, dlAllExtended } from "@/lib/download";
+import { dlExtended, dlAllExtended, extendedBlob } from "@/lib/download";
+import { extendFilename } from "@/lib/extend-utils";
 import { DlIcon } from "@/components/icons";
 import { FromWebsite } from "@/components/ui/from-website";
 import { LoadError } from "@/components/ui/load-error";
+import { SendTo } from "@/components/ui/send-to";
 
 export default function ExtendPage() {
   const {
@@ -24,7 +26,7 @@ export default function ExtendPage() {
     padding, setPadding,
     fillStyle, setFillStyle,
     fillColor, setFillColor,
-    gatewayAvailable, aiFill, generateFill, aiFor, aiBlocked,
+    fitSafe, setFitSafe, safe,
     isMulti,
     loadImage, loadWithRatio, navigateTo, reset, reportLoadError, loadError,
   } = useToolState().extend;
@@ -34,8 +36,8 @@ export default function ExtendPage() {
 
   const resetConfirm = useConfirm({ onConfirm: reset, count: queue.length, threshold: 1 });
 
-  const fill = { style: fillStyle, color: fillColor, ai: aiFill?.img ?? null };
-  const download = () => current && dl.run(() => dlExtended(current, ratio, padding, fill));
+  const fill = { style: fillStyle, color: fillColor };
+  const download = () => current && dl.run(() => dlExtended(current, ratio, padding, fill, safe));
 
   useKeyboardShortcuts({
     onEnter: step === "edit" && current && !dl.busy ? download : undefined,
@@ -83,7 +85,7 @@ export default function ExtendPage() {
                 padding={padding}
                 fillStyle={fillStyle}
                 fillColor={fillColor}
-                aiFill={aiFill?.img ?? null}
+                safe={safe}
               />
             </div>
             <ExtendControls
@@ -96,13 +98,8 @@ export default function ExtendPage() {
               setFillStyle={setFillStyle}
               fillColor={fillColor}
               setFillColor={setFillColor}
-              ai={{
-                available: gatewayAvailable,
-                status: aiFill?.status ?? null,
-                error: aiFill?.error,
-                blocked: aiBlocked,
-                onGenerate: generateFill,
-              }}
+              fitSafe={fitSafe}
+              setFitSafe={setFitSafe}
             />
           </div>
 
@@ -126,13 +123,21 @@ export default function ExtendPage() {
             >
               New images
             </ConfirmButton>
-            <Button variant="primary" onClick={download} disabled={dl.busy || aiFill?.status === "busy"}>
+            <Button variant="primary" onClick={download} disabled={dl.busy}>
               <DlIcon /> Download
             </Button>
             {isMulti && (
-              <Button variant="primary" onClick={() => dl.run(() => dlAllExtended(queue, ratio, padding, fill, aiFor))} disabled={dl.busy || aiFill?.status === "busy"}>
+              <Button variant="primary" onClick={() => dl.run(() => dlAllExtended(queue, ratio, padding, fill, safe))} disabled={dl.busy}>
                 <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
               </Button>
+            )}
+            {current && (
+              <SendTo
+                from="extend"
+                fileName={extendFilename(current.name)}
+                getBlob={() => extendedBlob(current, ratio, padding, fill, safe)}
+                disabled={dl.busy}
+              />
             )}
           </div>
           {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}

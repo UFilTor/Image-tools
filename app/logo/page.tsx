@@ -18,6 +18,8 @@ import { dlCanvas } from "@/lib/download";
 import { DlIcon } from "@/components/icons";
 import { FromWebsite } from "@/components/ui/from-website";
 import { LoadError } from "@/components/ui/load-error";
+import { SendTo } from "@/components/ui/send-to";
+import { canvasToBlob } from "@/lib/image-utils";
 import { checkerBg } from "@/lib/constants";
 
 export default function LogoPage() {
@@ -53,12 +55,12 @@ export default function LogoPage() {
     start();
   };
 
+  const ext = name.lastIndexOf(".");
+  const exportName = `${ext > -1 ? name.slice(0, ext) : name}_processed.png`;
   const handleDownload = () => {
     const canvas = getExportCanvas();
     if (!canvas) return;
-    const ext = name.lastIndexOf(".");
-    const baseName = ext > -1 ? name.slice(0, ext) : name;
-    dl.run(() => dlCanvas(canvas, `${baseName}_processed.png`));
+    dl.run(() => dlCanvas(canvas, exportName));
   };
 
   useKeyboardShortcuts({
@@ -208,7 +210,7 @@ export default function LogoPage() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 justify-center">
+          <div className="flex items-center gap-2 flex-wrap justify-center">
             <ConfirmButton
               armed={resetConfirm.armed}
               onFire={resetConfirm.fire}
@@ -219,6 +221,15 @@ export default function LogoPage() {
             <Button variant="primary" onClick={handleDownload} disabled={dl.busy || exportBusy}>
               <DlIcon /> Download PNG
             </Button>
+            <SendTo
+              from="logo"
+              fileName={exportName}
+              getBlob={async () => {
+                const canvas = getExportCanvas();
+                return canvas ? canvasToBlob(canvas) : null;
+              }}
+              disabled={dl.busy || exportBusy}
+            />
           </div>
           {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}
         </div>

@@ -1,3 +1,5 @@
+import type { StorefrontSlotKey } from "./storefront";
+
 export interface CropRect {
   x: number;
   y: number;
@@ -38,6 +40,8 @@ export interface Ratio {
   label: string;
   sub: string;
   value: number | null;
+  /** Storefront slot this preset is for; the editor then draws its safe zone (lib/storefront.ts) */
+  slot?: StorefrontSlotKey;
 }
 
 export interface CropQueueItem {

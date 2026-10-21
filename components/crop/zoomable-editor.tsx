@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback, ReactNode } from "react";
 import { CropRect, DisplaySize, CropDragType } from "@/lib/types";
 import { CropOverlay } from "./crop-overlay";
+import { safeZoneForRatio } from "@/lib/storefront";
 
 interface ZoomableEditorProps {
   src: string;
@@ -79,7 +80,7 @@ export function ZoomableEditor({
         transformOrigin: "center center",
       }}>
         <img key={src} src={src} alt="" decoding="async" draggable={false} className="block pointer-events-none animate-fadeIn" style={{ width: disp.dw, height: disp.dh }} />
-        <CropOverlay crop={crop} onDown={onDown} />
+        <CropOverlay crop={crop} onDown={onDown} safe={safeZoneForRatio(ratio)} />
       </div>
 
       {zoom > 1 && (

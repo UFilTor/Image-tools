@@ -110,20 +110,25 @@ export function useUpscale() {
     void pump();
   }, [pump]);
 
-  const loadAndUpscale = useCallback(async (files: FileList) => {
+  /**
+   * `mode` and `factor` override the size-based default and the session scale: the storefront size
+   * warning wants a 2x upscale, whatever scale was picked last (4x of a large crop can pass the cap).
+   */
+  const loadAndUpscale = useCallback(async (files: FileList, mode?: ProcessMode, factor?: UpscaleFactor) => {
     setLoadError(null);
     const { images, error } = await loadImageFiles(files);
     if (error) setLoadError(error);
     if (!images.length) return;
     const ok: UpscaleItem[] = images.map((r) => ({
       src: r.src, name: r.name, natural: r.nat,
-      mode: pickMode(r.nat),
+      mode: mode ?? pickMode(r.nat),
       status: "queued", progress: 0, result: null, resultNatural: null,
     }));
+    if (factor) setScale(factor);
     setItems(ok);
     setCurrentIdx(0);
     setStep("processing");
-    enqueue(ok.map((item, idx) => ({ idx, item, factor: scale })));
+    enqueue(ok.map((item, idx) => ({ idx, item, factor: factor ?? scale })));
   }, [scale, enqueue]);
 
   // Re-run at a new scale. Enhance ignores the factor, so those results are kept as-is.

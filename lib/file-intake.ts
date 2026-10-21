@@ -53,7 +53,7 @@ export async function prepareFiles(files: FileList | File[]): Promise<{ files: F
   }
 }
 
-function toFileList(arr: File[]): FileList {
+export function toFileList(arr: File[]): FileList {
   const dt = new DataTransfer();
   arr.forEach((f) => dt.items.add(f));
   return dt.files;

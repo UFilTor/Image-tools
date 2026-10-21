@@ -1,6 +1,7 @@
 import { CropRect, NaturalSize, DisplaySize, MultiCropItem, CropQueueItem, UpscaleItem, UpscaleFactor, ExtendQueueItem } from "./types";
-import { cropToBlob, cropFilename, loadImageEl } from "./image-utils";
+import { cropToBlob, cropFilename, loadImageEl, canvasToBlob } from "./image-utils";
 import { upscaleFilename } from "./upscale";
+import type { SafeZone } from "./storefront";
 import { extendGeometry, renderExtended, extendFilename, extendSizeError, ExtendFill } from "./extend-utils";
 
 export interface DownloadResult {
@@ -107,19 +108,32 @@ export function dlAllUpscaled(items: UpscaleItem[], scale: UpscaleFactor): Promi
   );
 }
 
+/** The full-resolution Extend result as a PNG; throws the size limit as user-facing copy. */
+export async function extendedBlob(
+  item: ExtendQueueItem,
+  ratio: number | null,
+  padding: number,
+  fill: ExtendFill,
+  safe: SafeZone | null = null,
+): Promise<Blob> {
+  const geo = extendGeometry(item.natural, ratio, padding, safe);
+  const sizeErr = extendSizeError(geo);
+  if (sizeErr) throw new Error(sizeErr);
+  const img = await loadImageEl(item.src);
+  return canvasToBlob(renderExtended(img, geo, fill));
+}
+
 export async function dlExtended(
   item: ExtendQueueItem,
   ratio: number | null,
   padding: number,
   fill: ExtendFill,
+  safe: SafeZone | null = null,
 ): Promise<DownloadResult> {
-  const geo = extendGeometry(item.natural, ratio, padding);
-  const sizeErr = extendSizeError(geo);
+  const sizeErr = extendSizeError(extendGeometry(item.natural, ratio, padding, safe));
   if (sizeErr) return { ok: false, error: sizeErr };
   try {
-    const img = await loadImageEl(item.src);
-    const cv = renderExtended(img, geo, fill);
-    const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, "image/png"));
+    const blob = await extendedBlob(item, ratio, padding, fill, safe);
     if (!blob) return FAIL;
     triggerDownload(blob, extendFilename(item.name));
     return { ok: true };
@@ -133,19 +147,13 @@ export function dlAllExtended(
   ratio: number | null,
   padding: number,
   fill: ExtendFill,
-  /** Per-item generated background for the "ai" fill; items without one use the mirror fallback. */
-  aiFor?: (item: ExtendQueueItem) => CanvasImageSource | null,
+  safe: SafeZone | null = null,
 ): Promise<DownloadResult> {
   return zipAndDownload(
     items.map((it) => ({
       name: extendFilename(it.name),
-      blob: async () => {
-        const geo = extendGeometry(it.natural, ratio, padding);
-        if (extendSizeError(geo)) return null;
-        const img = await loadImageEl(it.src);
-        const cv = renderExtended(img, geo, aiFor ? { ...fill, ai: aiFor(it) } : fill);
-        return new Promise<Blob | null>((res) => cv.toBlob(res, "image/png"));
-      },
+      // A size-limit throw skips that entry, like any other failed render.
+      blob: () => extendedBlob(it, ratio, padding, fill, safe),
     })),
     "extended.zip",
   );

@@ -16,10 +16,12 @@ import { RatioPicker } from "@/components/crop/ratio-picker";
 import { ZoomableEditor } from "@/components/crop/zoomable-editor";
 import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
 import { dlCrop, dlAll } from "@/lib/download";
-import { cropFilename } from "@/lib/image-utils";
+import { cropFilename, cropToBlob } from "@/lib/image-utils";
 import { DlIcon, RetryIcon, GripIcon, RatioIcon } from "@/components/icons";
 import { FromWebsite } from "@/components/ui/from-website";
 import { LoadError } from "@/components/ui/load-error";
+import { SendTo } from "@/components/ui/send-to";
+import { SizeWarning } from "@/components/ui/size-warning";
 
 export default function SmartCropPage() {
   const {
@@ -122,6 +124,12 @@ export default function SmartCropPage() {
               disp={editItem.disp}
               nat={editItem.natural}
             />
+            <SizeWarning
+              ratio={ratio}
+              widthPx={editCropPx}
+              fileName={cropFilename(editItem.name)}
+              getBlob={() => cropToBlob(editItem.src, editItem.natural, editItem.disp, editCrop)}
+            />
           </div>
           <ZoomableEditor
             src={editItem.src}
@@ -174,6 +182,12 @@ export default function SmartCropPage() {
                 <DlIcon /> {dl.busy ? "Preparing…" : "Download all"}
               </Button>
             )}
+            <SendTo
+              from="smart-crop"
+              fileName={cropFilename(editItem.name)}
+              getBlob={() => cropToBlob(editItem.src, editItem.natural, editItem.disp, editCrop)}
+              disabled={dl.busy}
+            />
           </div>
           {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}
         </div>
