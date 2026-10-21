@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useModKey } from "@/lib/platform";
 import { setOverlayOpen } from "@/lib/overlay-state";
+import { FETCH_KEY, FULL_EXPERIENCE, TOOLS, uploadCards } from "@/lib/constants";
 
 interface ShortcutGroup {
   title: string;
@@ -13,20 +14,16 @@ function getGroups(modKey: string): ShortcutGroup[] {
   return [
     {
       title: "Switch mode",
-      rows: [
-        { keys: [`${modKey}1`], label: "Crop" },
-        { keys: [`${modKey}2`], label: "Smart Crop" },
-        { keys: [`${modKey}3`], label: "Upscale" },
-        { keys: [`${modKey}4`], label: "Logo" },
-      ],
+      rows: TOOLS.map((t) => ({ keys: [`${modKey}${t.num}`], label: t.label })),
     },
     {
-      title: "Pick ratio (upload screen)",
+      title: "Pick ratio (upload screen, Extend)",
       rows: [
-        { keys: ["1"], label: "Square" },
-        { keys: ["2"], label: "Experience" },
-        { keys: ["3"], label: "Cover image" },
-        { keys: ["4"], label: "Free" },
+        ...uploadCards(true).map((c, i) => ({
+          keys: [String(i + 1)],
+          label: c.kind === "set" ? FULL_EXPERIENCE.label : c.ratio.label,
+        })),
+        { keys: [FETCH_KEY], label: "Fetch from a website (upload screen)" },
       ],
     },
     {

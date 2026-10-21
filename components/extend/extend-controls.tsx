@@ -1,8 +1,11 @@
 "use client";
 
-import { RATIOS } from "@/lib/constants";
+import { useEffect, useMemo } from "react";
+import { FULL_EXPERIENCE, uploadCards } from "@/lib/constants";
+import { isOverlayOpen } from "@/lib/overlay-state";
+import { KeyboardHint } from "@/components/ui/keyboard-hint";
 import { FillStyle } from "@/lib/extend-utils";
-import { safeZoneForRatio } from "@/lib/storefront";
+import { isSecondaryRatio, safeZoneForRatio } from "@/lib/storefront";
 
 interface ExtendControlsProps {
   ratio: number | null;
@@ -16,6 +19,10 @@ interface ExtendControlsProps {
   setFillColor: (v: string) => void;
   fitSafe: boolean;
   setFitSafe: (v: boolean) => void;
+  /** Full experience is on: each photo has its own shape */
+  isSet: boolean;
+  /** Turns the loaded photos into a Full experience (main photo first) */
+  onPickSet: () => void;
 }
 
 const FILL_OPTIONS: { key: FillStyle; label: string }[] = [
@@ -32,21 +39,42 @@ const COLOR_PRESETS = [
 
 export function ExtendControls({
   ratio, ratioLabel, setRatio, padding, setPadding,
-  fillStyle, setFillStyle, fillColor, setFillColor, fitSafe, setFitSafe,
+  fillStyle, setFillStyle, fillColor, setFillColor, fitSafe, setFitSafe, isSet, onPickSet,
 }: ExtendControlsProps) {
+  const cards = useMemo(() => uploadCards(true), []);
+  // Number keys pick a target ratio, in the same order as the upload screen's cards.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isOverlayOpen()) return;
+      const card = cards[parseInt(e.key, 10) - 1];
+      if (!card) return;
+      e.preventDefault();
+      if (card.kind === "set") onPickSet();
+      else setRatio(card.ratio.value, card.ratio.label);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [setRatio, onPickSet, cards]);
+
   return (
     <div className="bg-surface border border-border rounded-2xl px-[22px] py-5 flex flex-col gap-[18px] w-full max-w-[420px]">
       {/* Target ratio */}
       <div>
         <div className="text-[13px] font-semibold text-text mb-2.5">Target ratio</div>
         <div className="flex gap-2 flex-wrap">
-          {RATIOS.map((r) => {
-            const active = r.value === ratio && r.label === ratioLabel;
+          {cards.map((card, idx) => {
+            const r = card.kind === "set" ? { label: FULL_EXPERIENCE.label, sub: FULL_EXPERIENCE.sub } : card.ratio;
+            const active =
+              card.kind === "set"
+                ? isSet
+                : !isSet && (card.ratio.slot?.startsWith("secondary") ? isSecondaryRatio(ratio) : card.ratio.value === ratio && r.label === ratioLabel);
             return (
               <button
                 key={r.label}
                 type="button"
-                onClick={() => setRatio(r.value, r.label)}
+                onClick={() => (card.kind === "set" ? onPickSet() : setRatio(card.ratio.value, card.ratio.label))}
                 className={`
                   inline-flex flex-col items-start px-[14px] py-2 rounded-button cursor-pointer
                   border-[1.5px] text-[13px] font-semibold transition-all duration-150
@@ -56,7 +84,10 @@ export function ExtendControls({
                   }
                 `}
               >
-                {r.label}
+                <span className="inline-flex items-center gap-1.5">
+                  {r.label}
+                  <span className="hidden sm:inline-flex"><KeyboardHint shortcut={String(idx + 1)} /></span>
+                </span>
                 <span className="text-[10px] font-medium tracking-[0.04em] text-text-muted">{r.sub}</span>
               </button>
             );

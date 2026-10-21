@@ -5,7 +5,7 @@ import { ExtendQueueItem } from "@/lib/types";
 import { revokeSrc, LoadedImage } from "@/lib/image-utils";
 import { loadImageFiles } from "@/lib/load-images";
 import { FillStyle } from "@/lib/extend-utils";
-import { safeZoneForRatio } from "@/lib/storefront";
+import { EXPERIENCE_SET_MAX, SET_OVERFLOW_NOTE, safeZoneForRatio, withSetPresets } from "@/lib/storefront";
 
 type ExtendStep = "upload" | "edit";
 
@@ -20,12 +20,17 @@ export function useExtend() {
   const [fillColor, setFillColor] = useState("#ffffff");
   // "Fit inside safe zone": only applies to storefront presets, which have a safe zone.
   const [fitSafe, setFitSafe] = useState(false);
-  // Memoized: ExtendPreview redraws when `safe` changes, and the provider re-renders on every
-  // tool's state change (Upscale progress included).
-  const safe = useMemo(() => (fitSafe ? safeZoneForRatio(ratio) : null), [fitSafe, ratio]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Full experience: says when more photos came in than the page shows */
+  const [setNote, setSetNote] = useState<string | null>(null);
 
   const current = queue[currentIdx] || null;
+  // Full experience gives each photo its own shape; otherwise the queue shares `ratio`.
+  const isSet = queue.some((q) => q.preset);
+  const curRatio = current?.preset ? current.preset.value : ratio;
+  // Memoized: ExtendPreview redraws when `safe` changes, and the provider re-renders on every
+  // tool's state change (Upscale progress included).
+  const safe = useMemo(() => (fitSafe ? safeZoneForRatio(curRatio) : null), [fitSafe, curRatio]);
 
   const srcsRef = useRef<string[]>([]);
   useEffect(() => {
@@ -45,6 +50,7 @@ export function useExtend() {
   const loadImage = useCallback(async (files: FileList) => {
     const ok = await load(files);
     if (!ok) return;
+    setSetNote(null);
     setQueue(buildItems(ok));
     setCurrentIdx(0);
     setStep("edit");
@@ -53,6 +59,7 @@ export function useExtend() {
   const loadWithRatio = useCallback(async (files: FileList, ratioVal: number | null, rLabel: string) => {
     const ok = await load(files);
     if (!ok) return;
+    setSetNote(null);
     setQueue(buildItems(ok));
     setCurrentIdx(0);
     setRatioState(ratioVal);
@@ -60,10 +67,39 @@ export function useExtend() {
     setStep("edit");
   }, [load]);
 
+  /** Full experience: the photos in page order become the main photo and the secondary photos. */
+  const applySet = useCallback((list: ExtendQueueItem[]) => {
+    list.slice(EXPERIENCE_SET_MAX).forEach((it) => revokeSrc(it.src));
+    // The queue-wide ratio and label stay as they were (each photo shows its own role), so a
+    // reset and a new load never inherit a "Full experience" label without presets.
+    setQueue(withSetPresets(list.slice(0, EXPERIENCE_SET_MAX)));
+    setCurrentIdx(0);
+    setSetNote(list.length > EXPERIENCE_SET_MAX ? SET_OVERFLOW_NOTE : null);
+    setStep("edit");
+  }, []);
+
+  const loadExperienceSet = useCallback(async (files: FileList) => {
+    const ok = await load(files);
+    if (ok) applySet(buildItems(ok));
+  }, [load, applySet]);
+
+  /** Target ratio's Full experience button: the photos already loaded, in their order. */
+  const pickSet = useCallback(() => applySet(queue), [queue, applySet]);
+
+  /** A single target ratio for every photo; leaves Full experience. */
   const setRatio = useCallback((v: number | null, label: string) => {
     setRatioState(v);
     setRatioLabel(label);
+    setSetNote(null);
+    setQueue((q) => (q.some((it) => it.preset) ? q.map((it) => ({ ...it, preset: undefined })) : q));
   }, []);
+
+  /** Full experience: make the current photo the main one; roles follow the new order. */
+  const makeMain = useCallback(() => {
+    if (currentIdx <= 0) return;
+    setQueue((q) => withSetPresets([q[currentIdx], ...q.filter((_, i) => i !== currentIdx)]));
+    setCurrentIdx(0);
+  }, [currentIdx]);
 
   const navigateTo = useCallback((idx: number) => {
     if (idx < 0 || idx >= queue.length) return;
@@ -72,6 +108,7 @@ export function useExtend() {
 
   const reset = useCallback(() => {
     srcsRef.current.forEach(revokeSrc);
+    setSetNote(null);
     setQueue([]);
     setCurrentIdx(0);
     setStep("upload");
@@ -81,7 +118,12 @@ export function useExtend() {
 
   return {
     step, queue, currentIdx, current,
-    ratio, ratioLabel, setRatio,
+    /** The current photo's shape: its own in Full experience, otherwise the queue's */
+    ratio: curRatio,
+    ratioLabel: current?.preset ? current.preset.label : ratioLabel,
+    /** The queue-wide ratio, for Download all (Full experience photos use their own) */
+    batchRatio: ratio,
+    setRatio, isSet, setNote, loadExperienceSet, pickSet, makeMain,
     padding, setPadding,
     fillStyle, setFillStyle,
     fillColor, setFillColor,

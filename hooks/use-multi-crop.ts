@@ -5,7 +5,8 @@ import { MultiCropItem, CropRect } from "@/lib/types";
 import { editorDispSize, rescaleCrop, revokeSrc, LoadedImage } from "@/lib/image-utils";
 import { loadImageFiles } from "@/lib/load-images";
 import { centeredOnBbox } from "@/lib/crop-math";
-import { safeZoneForRatio } from "@/lib/storefront";
+import { EXPERIENCE_SET_MAX, SET_OVERFLOW_NOTE, safeZoneForRatio, withSetPresets } from "@/lib/storefront";
+import { FULL_EXPERIENCE } from "@/lib/constants";
 import { detectFocalWithFallback } from "@/lib/ai-client";
 import { useWindowResize } from "./use-window-resize";
 
@@ -13,6 +14,23 @@ type MultiStep = "upload" | "ratio" | "review" | "recrop";
 
 let nextId = 1;
 const newId = () => `mc-${Date.now().toString(36)}-${nextId++}`;
+
+/** The shape an item is cropped at: its own in Full experience, otherwise the batch ratio. */
+const ratioOf = (it: MultiCropItem, batchRatio: number | null): number | null => (it.preset ? it.preset.value : batchRatio);
+
+/** Crop around the item's subject at `r`, keeping it inside that shape's storefront safe zone. */
+const subjectCrop = (it: MultiCropItem, r: number | null, focal = it.focal) =>
+  centeredOnBbox(it.disp.dw, it.disp.dh, r, focal?.bbox ?? null, focal?.focalPoint, safeZoneForRatio(r));
+
+/**
+ * Full experience after a reorder: roles follow position (first is the main photo), and photos
+ * whose shape changed are re-cropped around their subject.
+ */
+const reassignRoles = (list: MultiCropItem[]): MultiCropItem[] =>
+  withSetPresets(list).map((it, i) => {
+    if (list[i].preset?.value === it.preset.value) return it;
+    return { ...it, ratio: it.preset.value, crop: it.crop || it.focal ? subjectCrop(it, it.preset.value) : null };
+  });
 
 export function useMultiCrop() {
   const [step, setStep] = useState<MultiStep>("upload");
@@ -24,6 +42,8 @@ export function useMultiCrop() {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Full experience: says when more photos came in than the page shows */
+  const [setNote, setSetNote] = useState<string | null>(null);
   const analysisGen = useRef(0);
 
   const srcsRef = useRef<string[]>([]);
@@ -61,7 +81,7 @@ export function useMultiCrop() {
       if (i < 0) return prev;
       const next = [...prev];
       const it = next[i];
-      next[i] = { ...it, ratio: ratioVal ?? it.ratio, ...update(it) };
+      next[i] = { ...it, ratio: ratioOf(it, ratioVal) ?? it.ratio, ...update(it) };
       return next;
     });
   }, []);
@@ -71,26 +91,46 @@ export function useMultiCrop() {
     for (const item of currentItems) {
       if (myGen !== analysisGen.current) return; // cancelled by newer run
       if (item.focal?.bbox && !item.focal?.error) {
-        applyResult(item.id, ratioVal, (it) => ({
-          status: "done",
-          crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, it.focal!.bbox, it.focal?.focalPoint, safeZoneForRatio(ratioVal)),
-        }));
+        applyResult(item.id, ratioVal, (it) => ({ status: "done", crop: subjectCrop(it, ratioOf(it, ratioVal)) }));
         continue;
       }
       const focal = await detectFocalWithFallback(item.src, item.natural.w, item.natural.h);
       if (myGen !== analysisGen.current) return;
       applyResult(item.id, ratioVal, (it) => ({
         focal, status: focal.error ? "error" : "done",
-        crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, focal.bbox, focal.focalPoint, safeZoneForRatio(ratioVal)),
+        crop: subjectCrop(it, ratioOf(it, ratioVal), focal),
       }));
     }
   }, [applyResult]);
 
+  /**
+   * Full experience: the items in page order become the main photo and the secondary photos, each
+   * cropped at its own shape. Photos already analyzed are re-cropped at once; the rest are analyzed.
+   */
+  const applySet = useCallback((list: MultiCropItem[]) => {
+    const kept = list.slice(0, EXPERIENCE_SET_MAX);
+    list.slice(EXPERIENCE_SET_MAX).forEach((it) => revokeSrc(it.src));
+    const updated = withSetPresets(kept).map((it): MultiCropItem => {
+      const r = it.preset.value;
+      return it.focal?.bbox && !it.focal.error
+        ? { ...it, ratio: r, status: "done", crop: subjectCrop(it, r) }
+        : { ...it, ratio: r, status: "analyzing" };
+    });
+    setItems(updated);
+    setRatio(updated[0]?.preset?.value ?? null);
+    setRatioLabel(FULL_EXPERIENCE.label);
+    setSetNote(list.length > EXPERIENCE_SET_MAX ? SET_OVERFLOW_NOTE : null);
+    setStep("review");
+    if (updated.some((it) => it.status === "analyzing")) runAnalysis(updated, null);
+  }, [runAnalysis]);
+
   const startAnalysis = useCallback((ratioVal: number | null, rLabel: string) => {
     setRatioLabel(rLabel);
     setRatio(ratioVal);
+    setSetNote(null);
     const withStatus = items.map((it) => ({
       ...it,
+      preset: undefined,
       status: (it.focal?.bbox && !it.focal?.error ? "recalculating" : "analyzing") as MultiCropItem["status"],
       ratio: ratioVal ?? it.natural.w / it.natural.h,
     }));
@@ -106,22 +146,30 @@ export function useMultiCrop() {
     setItems(built);
     setRatio(ratioVal);
     setRatioLabel(rLabel);
+    setSetNote(null);
     setStep("review");
     runAnalysis(built, ratioVal);
   }, [load, runAnalysis]);
 
+  /** Full experience straight from a drop or a website: photos in page order. */
+  const loadAndAnalyzeSet = useCallback(async (files: FileList) => {
+    const ok = await load(files);
+    if (ok) applySet(ok.map((img) => buildItem(img, null, "analyzing")));
+  }, [load, applySet]);
+
+  /** The ratio picker's Full experience card: the loaded (or current) photos in their order. */
+  const pickSet = useCallback(() => applySet(items), [items, applySet]);
+
   const batchRecrop = useCallback((ratioVal: number | null, rLabel: string) => {
     setRatioLabel(rLabel);
     setRatio(ratioVal);
+    setSetNote(null);
     const updated = items.map((it) => {
       const effR = ratioVal ?? it.natural.w / it.natural.h;
       if (it.focal?.bbox && !it.focal?.error) {
-        return {
-          ...it, ratio: effR, status: "done" as const,
-          crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratioVal, it.focal.bbox, it.focal.focalPoint, safeZoneForRatio(ratioVal)),
-        };
+        return { ...it, preset: undefined, ratio: effR, status: "done" as const, crop: subjectCrop(it, ratioVal) };
       }
-      return { ...it, ratio: effR, status: "analyzing" as const };
+      return { ...it, preset: undefined, ratio: effR, status: "analyzing" as const };
     });
     setItems(updated);
     setStep("review");
@@ -140,7 +188,7 @@ export function useMultiCrop() {
       if (myGen !== analysisGen.current) return;
       applyResult(id, null, (it) => ({
         focal, status: focal.error ? "error" : "done",
-        crop: centeredOnBbox(it.disp.dw, it.disp.dh, ratio, focal.bbox, focal.focalPoint, safeZoneForRatio(ratio)),
+        crop: subjectCrop(it, ratioOf(it, ratio), focal),
       }));
     })();
   }, [items, ratio, applyResult]);
@@ -150,9 +198,18 @@ export function useMultiCrop() {
       const next = [...prev];
       const [removed] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, removed);
-      return next;
+      return next.some((it) => it.preset) ? reassignRoles(next) : next;
     });
   }, []);
+
+  /** Full experience, in the editor: make the photo being edited the main one and keep editing it. */
+  const makeMainInEdit = useCallback(() => {
+    if (editIdx === null || editIdx === 0 || !items[editIdx]) return;
+    const next = reassignRoles([items[editIdx], ...items.filter((_, i) => i !== editIdx)]);
+    setItems(next);
+    setEditIdx(0);
+    setEditCrop(next[0].crop ? { ...next[0].crop } : null);
+  }, [editIdx, items]);
 
   // Keep editor display sizes in step with the viewport; crops are display-space so they scale along.
   useWindowResize(() => {
@@ -210,6 +267,7 @@ export function useMultiCrop() {
   const reset = useCallback(() => {
     analysisGen.current++;
     srcsRef.current.forEach(revokeSrc);
+    setSetNote(null);
     setItems([]);
     setEditIdx(null);
     setStep("upload");
@@ -217,6 +275,7 @@ export function useMultiCrop() {
   }, []);
 
   const editItem = editIdx !== null ? items[editIdx] : null;
+  const isSet = items.some((it) => it.preset);
   const editCropPx = editItem ? Math.round(((editCrop?.w || 0) * editItem.natural.w) / (editItem.disp.dw || 1)) : 0;
   const editCropPy = editItem ? Math.round(((editCrop?.h || 0) * editItem.natural.h) / (editItem.disp.dh || 1)) : 0;
   const doneCount = items.filter((it) => it.status === "done").length;
@@ -225,12 +284,16 @@ export function useMultiCrop() {
 
   return {
     step, setStep, items, ratio, ratioLabel,
+    isSet, setNote,
     editIdx, editItem, editCrop, setEditCrop,
+    /** The shape the editor works at: the edited photo's own in Full experience */
+    editRatio: editItem ? ratioOf(editItem, ratio) : ratio,
+    editLabel: editItem?.preset?.label ?? ratioLabel,
     editCropPx, editCropPy,
     zoom, setZoom, pan, setPan,
     doneCount, errCount, analyzingCount,
     loadError, clearLoadError: () => setLoadError(null), reportLoadError: setLoadError,
-    loadImages, loadAndAnalyzeWithRatio, startAnalysis, batchRecrop, retryItem,
-    reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset,
+    loadImages, loadAndAnalyzeWithRatio, loadAndAnalyzeSet, pickSet, startAnalysis, batchRecrop, retryItem,
+    reorderItems, makeMainInEdit, openEdit, saveAndCloseEdit, navigateEdit, reset,
   };
 }

@@ -3,6 +3,8 @@
 interface FilmstripItem {
   src: string;
   adjusted?: boolean;
+  /** Short label over the thumbnail, such as "Main" */
+  tag?: string;
 }
 
 interface ImageFilmstripProps {
@@ -21,7 +23,7 @@ export function ImageFilmstrip({ items, currentIdx, onSelect }: ImageFilmstripPr
           key={idx}
           onClick={() => onSelect(idx)}
           className={`
-            shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer
+            relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer
             transition-[border-color,box-shadow] duration-150 bg-surface-alt
             ${idx === currentIdx
               ? "border-primary shadow-md"
@@ -39,6 +41,11 @@ export function ImageFilmstrip({ items, currentIdx, onSelect }: ImageFilmstripPr
             className="w-full h-full object-cover"
             draggable={false}
           />
+          {item.tag && (
+            <span className="absolute left-0.5 bottom-0.5 px-1 py-0.5 rounded text-[9px] font-semibold leading-none text-white bg-black/65">
+              {item.tag}
+            </span>
+          )}
         </button>
       ))}
     </div>

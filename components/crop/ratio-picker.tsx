@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
-import { RATIOS, STORAGE_KEYS } from "@/lib/constants";
+import { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
+import { FULL_EXPERIENCE, RATIOS, STORAGE_KEYS, uploadCards } from "@/lib/constants";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
 import { isOverlayOpen } from "@/lib/overlay-state";
 
@@ -10,7 +10,12 @@ interface RatioPickerProps {
   onBack: () => void;
   subtitle?: string;
   backLabel?: string;
+  /** A "Full experience" card (key 4, after Secondary photo) that crops the images as one experience */
+  onPickSet?: () => void;
 }
+
+/** Hover key for the Full experience card (not a ratio label). */
+const SET_KEY = "experience-photos";
 
 /** Last picked ratio label from localStorage, read hydration-safely (server always sees the default). */
 const DEFAULT_RATIO = "Square";
@@ -27,9 +32,11 @@ const readSavedRatio = () => {
   }
 };
 
-export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back" }: RatioPickerProps) {
+export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back", onPickSet }: RatioPickerProps) {
   const [hov, setHov] = useState<string | null>(null);
   const highlighted = useSyncExternalStore(subscribeStorage, readSavedRatio, () => DEFAULT_RATIO);
+
+  const cards = useMemo(() => uploadCards(!!onPickSet), [onPickSet]);
 
   const handlePick = useCallback((value: number | null, label: string) => {
     try {
@@ -42,10 +49,11 @@ export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (isOverlayOpen()) return;
-      const idx = parseInt(e.key, 10) - 1;
-      if (idx >= 0 && idx < RATIOS.length) {
+      const card = cards[parseInt(e.key, 10) - 1];
+      if (card) {
         e.preventDefault();
-        handlePick(RATIOS[idx].value, RATIOS[idx].label);
+        if (card.kind === "set") onPickSet?.();
+        else handlePick(card.ratio.value, card.ratio.label);
       }
       if (e.key === "Enter") {
         e.preventDefault();
@@ -59,7 +67,7 @@ export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handlePick, onBack, highlighted]);
+  }, [handlePick, onBack, highlighted, onPickSet, cards]);
 
   return (
     <div className="text-center animate-fadeUp">
@@ -75,18 +83,21 @@ export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back
         Select the aspect ratio for your output
       </p>
       <div className="grid grid-cols-2 gap-2.5 max-w-[320px] mx-auto">
-        {RATIOS.map(({ label, sub, value }, idx) => {
-          const isHighlighted = label === highlighted;
-          const isHovered = hov === label;
-          const active = isHovered || isHighlighted;
+        {cards.map((card, idx) => {
+          const isSet = card.kind === "set";
+          const label = isSet ? FULL_EXPERIENCE.label : card.ratio.label;
+          const sub = isSet ? FULL_EXPERIENCE.sub : card.ratio.sub;
+          const key = isSet ? SET_KEY : label;
+          const active = hov === key || (!isSet && label === highlighted);
           return (
             <button
-              key={label}
-              onClick={() => handlePick(value, label)}
-              onMouseEnter={() => setHov(label)}
+              key={key}
+              onClick={() => (card.kind === "set" ? onPickSet?.() : handlePick(card.ratio.value, card.ratio.label))}
+              onMouseEnter={() => setHov(key)}
               onMouseLeave={() => setHov(null)}
               className={`
                 py-4 px-3 rounded-xl border-[1.5px] cursor-pointer transition-[background-color,border-color] duration-150
+                ${idx === cards.length - 1 && cards.length % 2 ? "col-span-2" : ""}
                 flex flex-col items-center gap-1 relative
                 ${active
                   ? "border-primary bg-primary-bg"

@@ -1,4 +1,4 @@
-import type { StorefrontSlotKey } from "./storefront";
+import type { SetPreset, StorefrontSlotKey } from "./storefront";
 
 export interface CropRect {
   x: number;
@@ -51,6 +51,8 @@ export interface CropQueueItem {
   disp: DisplaySize;
   crop: CropRect;
   adjusted: boolean;
+  /** Full experience: this photo's own shape and role; without it the batch shares one ratio */
+  preset?: SetPreset;
 }
 
 export interface ExtendQueueItem {
@@ -58,6 +60,8 @@ export interface ExtendQueueItem {
   name: string;
   natural: NaturalSize;
   adjusted: boolean;
+  /** Full experience: this photo's own shape and role; without it the queue shares one ratio */
+  preset?: SetPreset;
 }
 
 export type CropDragType = "move" | "tl" | "tr" | "bl" | "br" | "t" | "b" | "l" | "r";
@@ -73,6 +77,8 @@ export interface MultiCropItem {
   focal: FocalResult | null;
   crop: CropRect | null;
   ratio: number;
+  /** Full experience: this photo's own shape and role; without it the batch shares one ratio */
+  preset?: SetPreset;
 }
 
 export type UpscaleFactor = 2 | 4;

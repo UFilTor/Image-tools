@@ -72,6 +72,16 @@ export function cropFilename(name: string): string {
   return `${d > -1 ? name.slice(0, d) : name}_crop.png`;
 }
 
+/** Full experience files lead with their page position and role so they sort in page order. */
+export function orderedName(fileName: string, idx: number, role?: "main" | "secondary"): string {
+  return role ? `${idx + 1}-${role}_${fileName}` : fileName;
+}
+
+/** Crop file name, in page order for Full experience. */
+export function queueCropFilename(name: string, idx: number, role?: "main" | "secondary"): string {
+  return orderedName(cropFilename(name), idx, role);
+}
+
 export function dispSize(
   nw: number,
   nh: number,

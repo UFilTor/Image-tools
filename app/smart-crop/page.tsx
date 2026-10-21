@@ -16,25 +16,27 @@ import { RatioPicker } from "@/components/crop/ratio-picker";
 import { ZoomableEditor } from "@/components/crop/zoomable-editor";
 import { ImageFilmstrip } from "@/components/crop/image-filmstrip";
 import { dlCrop, dlAll } from "@/lib/download";
-import { cropFilename, cropToBlob } from "@/lib/image-utils";
+import { cropToBlob, queueCropFilename } from "@/lib/image-utils";
 import { DlIcon, RetryIcon, GripIcon, RatioIcon } from "@/components/icons";
 import { FromWebsite } from "@/components/ui/from-website";
 import { LoadError } from "@/components/ui/load-error";
 import { SendTo } from "@/components/ui/send-to";
 import { SizeWarning } from "@/components/ui/size-warning";
 import { SafeZoneToggle } from "@/components/crop/safe-zone-toggle";
+import { SecondaryCountSwitch } from "@/components/crop/secondary-count-switch";
 
 export default function SmartCropPage() {
   const {
-    step, setStep, items, ratio, ratioLabel,
-    editIdx, editItem, editCrop, setEditCrop,
+    step, setStep, items, ratio, ratioLabel, isSet, setNote,
+    editIdx, editItem, editCrop, setEditCrop, editRatio, editLabel,
     editCropPx, editCropPy,
     zoom, setZoom, pan, setPan,
     doneCount, errCount, analyzingCount,
-    loadImages, loadAndAnalyzeWithRatio, startAnalysis, batchRecrop, retryItem,
-    reorderItems, openEdit, saveAndCloseEdit, navigateEdit, reset, reportLoadError, loadError,
+    loadImages, loadAndAnalyzeWithRatio, loadAndAnalyzeSet, pickSet, startAnalysis, batchRecrop, retryItem,
+    reorderItems, makeMainInEdit, openEdit, saveAndCloseEdit, navigateEdit, reset, reportLoadError, loadError,
   } = useToolState().smartCrop;
   const { startDrag } = useCropDrag();
+  const editFileName = editItem ? queueCropFilename(editItem.name, editIdx ?? 0, editItem.preset?.role) : "";
   useClipboardPaste(step === "upload" ? loadImages : null, reportLoadError);
   const dl = useDownload();
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -46,7 +48,7 @@ export default function SmartCropPage() {
   useKeyboardShortcuts({
     disableModeNav: step === "ratio" || step === "recrop",
     onEnter: isEdit && editItem?.crop && editCrop && !dl.busy
-      ? () => dl.run(() => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, cropFilename(editItem.name)))
+      ? () => dl.run(() => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, editFileName))
       : undefined,
     onEscape: isEdit ? saveAndCloseEdit : step === "review" ? resetConfirm.fire : undefined,
     onLeft: isEdit ? () => navigateEdit("prev") : undefined,
@@ -57,7 +59,7 @@ export default function SmartCropPage() {
   if (step === "upload") {
     return (
       <div className="w-full max-w-[1200px]">
-        <div className="max-w-[662px] w-full mx-auto mt-16 animate-fadeUp">
+        <div className="max-w-[662px] w-full mx-auto mt-10 animate-fadeUp">
           <div className="text-center mb-2">
             <h1 className="font-display uppercase font-bold text-[44px] text-primary leading-[0.95] tracking-[-0.005em] mb-2">
               Smart Crop
@@ -66,8 +68,9 @@ export default function SmartCropPage() {
               AI finds faces and focal points across a batch. You review and adjust.
             </p>
           </div>
-          <RatioDropZones onDropWithRatio={loadAndAnalyzeWithRatio} />
-          <FromWebsite kind="photo" multiple onFiles={loadImages} />
+          <FromWebsite kind="photo" multiple onFiles={loadImages} onExperience={loadAndAnalyzeSet}>
+            <RatioDropZones onDropWithRatio={loadAndAnalyzeWithRatio} onDropSet={loadAndAnalyzeSet} />
+          </FromWebsite>
           <LoadError message={loadError} />
         </div>
       </div>
@@ -82,6 +85,7 @@ export default function SmartCropPage() {
           <RatioPicker
             subtitle={`${items.length} image${items.length !== 1 ? "s" : ""} loaded`}
             onPick={startAnalysis}
+            onPickSet={pickSet}
             onBack={resetConfirm.fire}
             backLabel={resetConfirm.armed ? `Press again to clear ${items.length} image${items.length === 1 ? "" : "s"}` : "← Go back"}
           />
@@ -98,6 +102,7 @@ export default function SmartCropPage() {
           <RatioPicker
             subtitle="Change ratio for all images"
             onPick={(v, l) => { batchRecrop(v, l); }}
+            onPickSet={pickSet}
             onBack={() => setStep("review")}
           />
         </div>
@@ -112,24 +117,24 @@ export default function SmartCropPage() {
         <div className="flex flex-col items-center gap-4 animate-fadeUp">
           <div className="flex items-center gap-2.5 mb-1 flex-wrap justify-center">
             <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Edit crop</span>
-            <Badge>{ratioLabel}</Badge>
+            <Badge>{editLabel}</Badge>
             <span className="text-[13px] text-text-muted font-medium tabular-nums">
               {editIdx + 1} of {items.length}
             </span>
-            <SafeZoneToggle ratio={ratio} />
+            <SafeZoneToggle ratio={editRatio} />
             <SizeInput
               cropPx={editCropPx}
               cropPy={editCropPy}
-              ratio={ratio}
+              ratio={editRatio}
               crop={editCrop}
               setCrop={setEditCrop}
               disp={editItem.disp}
               nat={editItem.natural}
             />
             <SizeWarning
-              ratio={ratio}
+              ratio={editRatio}
               widthPx={editCropPx}
-              fileName={cropFilename(editItem.name)}
+              fileName={editFileName}
               getBlob={() => cropToBlob(editItem.src, editItem.natural, editItem.disp, editCrop)}
             />
           </div>
@@ -138,8 +143,8 @@ export default function SmartCropPage() {
             disp={editItem.disp}
             crop={editCrop}
             setCrop={setEditCrop}
-            ratio={ratio}
-            onDown={(e, t) => startDrag(e, t, editCrop, setEditCrop, ratio, editItem.disp.dw, editItem.disp.dh, zoom)}
+            ratio={editRatio}
+            onDown={(e, t) => startDrag(e, t, editCrop, setEditCrop, editRatio, editItem.disp.dw, editItem.disp.dh, zoom)}
             zoom={zoom}
             setZoom={setZoom}
             pan={pan}
@@ -171,10 +176,11 @@ export default function SmartCropPage() {
             </div>
           )}
           <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
+            {editItem.preset?.role === "secondary" && <Button onClick={makeMainInEdit}>Make main photo</Button>}
             <Button onClick={saveAndCloseEdit}>Save &amp; back</Button>
             <Button
               variant="primary"
-              onClick={() => dl.run(() => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, cropFilename(editItem.name)))}
+              onClick={() => dl.run(() => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, editFileName))}
               disabled={dl.busy}
             >
               <DlIcon /> Download
@@ -186,7 +192,7 @@ export default function SmartCropPage() {
             )}
             <SendTo
               from="smart-crop"
-              fileName={cropFilename(editItem.name)}
+              fileName={editFileName}
               getBlob={() => cropToBlob(editItem.src, editItem.natural, editItem.disp, editCrop)}
               disabled={dl.busy}
             />
@@ -206,6 +212,8 @@ export default function SmartCropPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Results</span>
             <Badge>{ratioLabel}</Badge>
+            {/* Batch-level like Change ratio, so it lives on the grid; Full experience sets the counts itself */}
+            {!isSet && <SecondaryCountSwitch ratio={ratio} onChange={batchRecrop} />}
             {analyzingCount > 0 && (
               <span className="text-xs text-text-muted">
                 Processing {analyzingCount} image{analyzingCount !== 1 ? "s" : ""}...
@@ -232,9 +240,12 @@ export default function SmartCropPage() {
         </div>
         {dl.error && <p className="text-sm text-error font-medium mb-3" role="alert">{dl.error}</p>}
 
+        {setNote && <p className="text-xs text-text-secondary mb-2" role="status">{setNote}</p>}
         {items.length > 1 && (
           <p className="text-xs text-text-dim mb-4">
-            Drag cards to reorder download sequence
+            {isSet
+              ? "Drag cards to reorder: the first is the main photo, the rest secondary photos"
+              : "Drag cards to reorder download sequence"}
           </p>
         )}
 
@@ -295,6 +306,12 @@ export default function SmartCropPage() {
                     </div>
                   );
                 })()}
+
+                {item.preset && (
+                  <span className="absolute left-2 top-2 px-1.5 py-1 rounded text-[10px] font-semibold leading-none text-white bg-black/65">
+                    {item.preset.role === "main" ? "Main photo" : "Secondary photo"}
+                  </span>
+                )}
 
                 {/* Analyzing overlay */}
                 {(item.status === "analyzing" || item.status === "recalculating") && (
@@ -367,7 +384,7 @@ export default function SmartCropPage() {
                       size="sm"
                       variant="primary"
                       aria-label={`Download ${item.name}`}
-                      onClick={() => dl.run(() => dlCrop(item.src, item.natural, item.disp, item.crop!, cropFilename(item.name)))}
+                      onClick={() => dl.run(() => dlCrop(item.src, item.natural, item.disp, item.crop!, queueCropFilename(item.name, idx, item.preset?.role)))}
                       disabled={dl.busy}
                     >
                       <DlIcon />

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { STOREFRONT_SLOTS, safeZone, safeZoneForRatio, slotForRatio, safeRect } from "@/lib/storefront";
-import { RATIOS } from "@/lib/constants";
+import { STOREFRONT_SLOTS, safeZone, safeZoneForRatio, slotForRatio, safeRect, isSecondaryRatio, experienceSet, withSetPresets } from "@/lib/storefront";
+import { FETCH_KEY, RATIOS, SECONDARY_RATIOS, uploadCards } from "@/lib/constants";
 import { centeredOnBbox } from "@/lib/crop-math";
 import { extendGeometry } from "@/lib/extend-utils";
 
@@ -90,5 +90,83 @@ describe("Extend: fit inside safe zone", () => {
     expect(geo.dx + geo.imgW).toBeLessThanOrEqual(Math.ceil(s.x + s.w));
     expect(geo.dy).toBeGreaterThanOrEqual(Math.floor(s.y));
     expect(geo.dy + geo.imgH).toBeLessThanOrEqual(Math.ceil(s.y + s.h));
+  });
+});
+
+describe("secondary photos", () => {
+  it("match the tiles measured on 2026-10-21 (360px phone to desktop, 1 to 3 photos)", () => {
+    // 1 photo: one 239x450 tile at 768px, 430x350 phone slide
+    expect(STOREFRONT_SLOTS.secondary1.minBox).toBeCloseTo(0.530, 3);
+    expect(STOREFRONT_SLOTS.secondary1.maxBox).toBeCloseTo(1.229, 3);
+    // 2 and 3 photos: 360x350 phone slide to 399x223 / 399x147 desktop tiles
+    expect(STOREFRONT_SLOTS.secondary2.minBox).toBeCloseTo(1.029, 3);
+    expect(STOREFRONT_SLOTS.secondary2.maxBox).toBeCloseTo(1.788, 3);
+    expect(STOREFRONT_SLOTS.secondary3.maxBox).toBeCloseTo(2.706, 3);
+  });
+
+  it("uses 4:5, 4:3 and 5:3, and each count gets its own safe zone", () => {
+    expect(SECONDARY_RATIOS.map((r) => [r.count, r.value])).toEqual([[1, 4 / 5], [2, 4 / 3], [3, 5 / 3]]);
+    const area = (r: number) => { const z = safeZoneForRatio(r)!; return z.w * z.h; };
+    expect(area(4 / 5)).toBeCloseTo(0.432, 3);
+    expect(area(4 / 3)).toBeCloseTo(0.575, 3);
+    expect(area(5 / 3)).toBeCloseTo(0.380, 3);
+  });
+
+  it("starts the Secondary photo card at 3 photos and recognises every count", () => {
+    expect(slotForRatio(RATIOS.find((r) => r.label === "Secondary photo")!.value)).toBe(STOREFRONT_SLOTS.secondary3);
+    for (const r of SECONDARY_RATIOS) expect(isSecondaryRatio(r.value)).toBe(true);
+    expect(isSecondaryRatio(3 / 2)).toBe(false);
+    expect(isSecondaryRatio(null)).toBe(false);
+  });
+
+  it("asks for enough width that a 430px phone at 3x stays sharp", () => {
+    for (const r of SECONDARY_RATIOS) {
+      // The 350px-tall slide at 3x needs 1050px of height, so width 1050 x shape (and 1290 for the 430px width)
+      expect(slotForRatio(r.value)!.minWidth).toBeGreaterThanOrEqual(Math.max(430 * 3, 1050 * r.value) - 1);
+    }
+  });
+});
+
+describe("experienceSet (Crop's Full experience)", () => {
+  const shapes = (n: number) => experienceSet(n).map((p) => `${p.role} ${p.value.toFixed(3)}`);
+
+  it("makes the first photo the main one at 3:2 and gives the rest the shape for their count", () => {
+    expect(shapes(1)).toEqual(["main 1.500"]);
+    expect(shapes(2)).toEqual(["main 1.500", "secondary 0.800"]);
+    expect(shapes(3)).toEqual(["main 1.500", "secondary 1.333", "secondary 1.333"]);
+    expect(shapes(4)).toEqual(["main 1.500", "secondary 1.667", "secondary 1.667", "secondary 1.667"]);
+  });
+
+  it("stops at the 4 photos the page's gallery shows, and handles nothing", () => {
+    expect(experienceSet(7)).toHaveLength(4);
+    expect(experienceSet(0)).toEqual([]);
+  });
+
+  it("uses the Experience preset for the main photo, so both stay in step", () => {
+    expect(experienceSet(1)[0].value).toBe(RATIOS.find((r) => r.slot === "experience")!.value);
+  });
+});
+
+describe("uploadCards", () => {
+  const names = (withSet: boolean) => uploadCards(withSet).map((c) => (c.kind === "set" ? "Full experience" : c.ratio.label));
+
+  it("puts Full experience at 4, right after Secondary photo, and keeps Free last (Crop)", () => {
+    expect(names(true)).toEqual(["Square", "Experience", "Secondary photo", "Full experience", "Cover image", "Free"]);
+  });
+
+  it("puts Fetch from a website on the key after the cards", () => {
+    expect(FETCH_KEY).toBe("7");
+  });
+
+  it("is just the ratios where Full experience isn't offered", () => {
+    expect(names(false)).toEqual(RATIOS.map((r) => r.label));
+  });
+});
+
+describe("withSetPresets", () => {
+  it("gives items their roles by position, so a reorder moves the main photo", () => {
+    const roles = (names: string[]) => withSetPresets(names.map((name) => ({ name }))).map((it) => `${it.name}:${it.preset.role}`);
+    expect(roles(["a", "b", "c"])).toEqual(["a:main", "b:secondary", "c:secondary"]);
+    expect(roles(["c", "a", "b"])).toEqual(["c:main", "a:secondary", "b:secondary"]);
   });
 });

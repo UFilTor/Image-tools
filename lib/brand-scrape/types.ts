@@ -28,6 +28,8 @@ export interface ScrapeResult {
   description?: string;
   logos: ImageCandidate[];
   photos: ImageCandidate[];
+  // On an Understory experience page: that experience's photos in page order, main photo first.
+  experiencePhotos: string[];
   // Pages that were fetched, for the status line in the configurator.
   pagesFetched: number;
 }

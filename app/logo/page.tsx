@@ -72,7 +72,7 @@ export default function LogoPage() {
   return (
     <div className="w-full max-w-[1200px]">
       {step === "upload" && (
-        <div className="max-w-[576px] w-full mx-auto mt-16 animate-fadeUp">
+        <div className="max-w-[576px] w-full mx-auto mt-10 animate-fadeUp">
           <div className="text-center mb-2">
             <h1 className="font-display uppercase font-bold text-[44px] text-primary leading-[0.95] tracking-[-0.005em] mb-2">
               Logo
@@ -81,24 +81,25 @@ export default function LogoPage() {
               Remove backgrounds and recolor logos instantly.
             </p>
           </div>
-          <DropZone onFiles={loadLogo}>
-            {(over) => (
-              <>
-                <div className="w-14 h-14 rounded-2xl bg-primary-bg flex items-center justify-center mx-auto mb-4">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <rect x="7" y="7" width="10" height="10" rx="1" opacity="0.5" />
-                    <rect x="10" y="10" width="4" height="4" rx="0.5" opacity="0.3" />
-                  </svg>
-                </div>
-                <p className={`text-[15px] font-medium ${over ? "text-primary" : "text-text-secondary"}`}>
-                  Drop logo here or <span className="text-primary font-bold">browse</span>
-                </p>
-                <p className="text-xs mt-2 text-text-muted">{ACCEPTED_FORMATS_LABEL}</p>
-              </>
-            )}
-          </DropZone>
-          <FromWebsite kind="logo" onFiles={loadLogo} />
+          <FromWebsite kind="logo" onFiles={loadLogo}>
+            <DropZone onFiles={loadLogo}>
+              {(over) => (
+                <>
+                  <div className="w-14 h-14 rounded-2xl bg-primary-bg flex items-center justify-center mx-auto mb-4">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <rect x="7" y="7" width="10" height="10" rx="1" opacity="0.5" />
+                      <rect x="10" y="10" width="4" height="4" rx="0.5" opacity="0.3" />
+                    </svg>
+                  </div>
+                  <p className={`text-[15px] font-medium ${over ? "text-primary" : "text-text-secondary"}`}>
+                    Drop logo here or <span className="text-primary font-bold">browse</span>
+                  </p>
+                  <p className="text-xs mt-2 text-text-muted">{ACCEPTED_FORMATS_LABEL}</p>
+                </>
+              )}
+            </DropZone>
+          </FromWebsite>
           <LoadError message={loadError} />
         </div>
       )}

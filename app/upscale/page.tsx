@@ -126,7 +126,7 @@ export default function UpscalePage() {
   if (step === "upload") {
     return (
       <div className="w-full max-w-[1200px]">
-        <div className="max-w-[662px] w-full mx-auto mt-16 animate-fadeUp">
+        <div className="max-w-[662px] w-full mx-auto mt-10 animate-fadeUp">
           <div className="text-center mb-2">
             <h1 className="font-display uppercase font-bold text-[44px] text-primary leading-[0.95] tracking-[-0.005em] mb-2">
               Upscale
@@ -142,19 +142,20 @@ export default function UpscalePage() {
             <ScaleToggle scale={scale} onChange={changeScale} />
           </div>
 
-          <DropZone onFiles={loadAndUpscale} multiple>
-            {() => (
-              <>
-                <div className="text-[15px] font-semibold text-primary mb-1">
-                  Drop images to improve
-                </div>
-                <div className="text-[13px] text-text-muted">
-                  or click to browse — {ACCEPTED_FORMATS_LABEL}
-                </div>
-              </>
-            )}
-          </DropZone>
-          <FromWebsite kind="photo" multiple onFiles={loadAndUpscale} />
+          <FromWebsite kind="photo" multiple onFiles={loadAndUpscale}>
+            <DropZone onFiles={loadAndUpscale} multiple>
+              {() => (
+                <>
+                  <div className="text-[15px] font-semibold text-primary mb-1">
+                    Drop images to improve
+                  </div>
+                  <div className="text-[13px] text-text-muted">
+                    or click to browse — {ACCEPTED_FORMATS_LABEL}
+                  </div>
+                </>
+              )}
+            </DropZone>
+          </FromWebsite>
           <LoadError message={loadError} />
 
           <p className="text-[12px] text-text-dim text-center mt-4 leading-[1.5]">

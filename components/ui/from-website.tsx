@@ -1,10 +1,12 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { prepareFiles } from "@/lib/file-intake";
 import type { ImageCandidate } from "@/lib/brand-scrape/types";
-import { checkerBg } from "@/lib/constants";
+import { FETCH_KEY, checkerBg } from "@/lib/constants";
+import { isOverlayOpen } from "@/lib/overlay-state";
+import { KeyboardHint } from "@/components/ui/keyboard-hint";
 import { userMessage } from "@/lib/errors";
 
 interface FromWebsiteProps {
@@ -13,6 +15,10 @@ interface FromWebsiteProps {
   multiple?: boolean;
   /** Same loader the page uses for clipboard paste */
   onFiles: (files: FileList) => void;
+  /** On an Understory experience page: load all its photos in page order as a Full experience */
+  onExperience?: (files: FileList) => void;
+  /** The page's other upload options (drop zones). Hidden while fetching, so only the found images show. */
+  children?: ReactNode;
 }
 
 const MAX_SHOWN = { logo: 8, photo: 24 } as const;
@@ -33,15 +39,30 @@ function fileNameFor(url: string, index: number, type: string): string {
 }
 
 /**
- * "Or fetch from a website": paste a customer's URL, pick from the logos or photos the brand
- * scraper finds (`/api/scrape`), and load them into the tool like a paste or a drop would.
+ * "Fetch from a website" (a full-width button under the drop zones): paste a customer's URL, pick
+ * from the logos or photos the brand scraper finds (`/api/scrape`), and load them into the tool
+ * like a paste or a drop would.
  */
-export function FromWebsite({ kind, multiple = false, onFiles }: FromWebsiteProps) {
+export function FromWebsite({ kind, multiple = false, onFiles, onExperience, children }: FromWebsiteProps) {
   const [open, setOpen] = useState(false);
+
+  // Key 7 opens it, after the cards' 1-6 (and the same key in tools without cards).
+  useEffect(() => {
+    if (open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== FETCH_KEY || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isOverlayOpen()) return;
+      e.preventDefault();
+      setOpen(true);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open]);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState<"scrape" | "load" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [found, setFound] = useState<{ site: string; items: ImageCandidate[] } | null>(null);
+  const [found, setFound] = useState<{ site: string; items: ImageCandidate[]; experience: string[] } | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const noun = kind === "logo" ? "logo" : "photo";
 
@@ -66,7 +87,9 @@ export function FromWebsite({ kind, multiple = false, onFiles }: FromWebsiteProp
         .slice(0, MAX_SHOWN[kind]);
       if (!items.length) throw new Error(`No ${noun}s found on that website.`);
       const site = typeof data?.siteName === "string" && data.siteName ? data.siteName : new URL(data.url).hostname;
-      setFound({ site, items });
+      const expList: unknown = data?.experiencePhotos;
+      const experience = (Array.isArray(expList) ? expList : []).filter((u): u is string => typeof u === "string");
+      setFound({ site, items, experience });
     } catch (err) {
       setError(userMessage(err));
     } finally {
@@ -77,13 +100,14 @@ export function FromWebsite({ kind, multiple = false, onFiles }: FromWebsiteProp
   const toggle = (u: string) =>
     setPicked((p) => (multiple ? (p.includes(u) ? p.filter((x) => x !== u) : [...p, u]) : p[0] === u ? [] : [u]));
 
-  const use = async () => {
-    if (!picked.length || busy) return;
+  /** Download `urls` through the proxy, in order, and hand them to `deliver`. */
+  const loadUrls = async (urls: string[], deliver: (files: FileList) => void) => {
+    if (!urls.length || busy) return;
     setBusy("load");
     setError(null);
     try {
       const files = await Promise.all(
-        picked.map(async (u, i) => {
+        urls.map(async (u, i) => {
           const res = await fetch(proxied(u));
           if (!res.ok) throw new Error("Couldn't download one of the images. Try another one.");
           const blob = await res.blob();
@@ -92,7 +116,7 @@ export function FromWebsite({ kind, multiple = false, onFiles }: FromWebsiteProp
       );
       const { files: ready, error: intakeError } = await prepareFiles(files);
       if (intakeError) throw new Error(intakeError);
-      if (ready) onFiles(ready);
+      if (ready) deliver(ready);
     } catch (err) {
       setError(userMessage(err));
     } finally {
@@ -102,27 +126,48 @@ export function FromWebsite({ kind, multiple = false, onFiles }: FromWebsiteProp
 
   if (!open) {
     return (
-      <div className="text-center mt-4">
+      <>
+        {children}
+        {/* As wide as the cards above it; a solid border, since it isn't a drop target */}
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-[13px] font-semibold text-primary underline underline-offset-4 decoration-border-hover hover:decoration-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-keyshortcuts={FETCH_KEY}
+          className="
+            relative block w-full max-w-[662px] mx-auto mt-3 rounded-2xl border-[1.5px] border-border bg-surface px-7 py-3.5 text-center cursor-pointer
+            transition-[background-color,border-color] duration-200 hover:border-primary hover:bg-primary-bg
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg
+          "
         >
-          Or fetch from a website
+          <span className="absolute top-2.5 right-2.5 hidden sm:inline-flex">
+            <KeyboardHint shortcut={FETCH_KEY} />
+          </span>
+          <span className="block font-display uppercase font-bold text-[16px] text-primary tracking-[0.02em] leading-none">
+            Fetch from a website
+          </span>
+          <span className="block text-[12px] text-text-muted mt-1.5">
+            No file? Paste the customer&apos;s website and pick {kind === "logo" ? "their logo" : "their photos"}.
+          </span>
         </button>
-        <p className="text-xs text-text-secondary mt-1">
-          No file? Paste the customer&apos;s website and pick {kind === "logo" ? "their logo" : "their photos"}.
-        </p>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="bg-surface border border-border rounded-2xl px-[22px] py-5 mt-4">
+    <div className="bg-surface border border-border rounded-2xl px-[22px] pt-5 mt-4">
       <form onSubmit={scrape}>
-        <label htmlFor={`from-website-${kind}`} className="block text-[13px] font-semibold text-text mb-2.5">
-          Fetch {noun}s from a website
-        </label>
+        <div className="flex items-center justify-between gap-3 mb-2.5">
+          <label htmlFor={`from-website-${kind}`} className="text-[13px] font-semibold text-text">
+            Fetch {noun}s from a website
+          </label>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-[13px] font-semibold text-text-secondary hover:text-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            ← Back
+          </button>
+        </div>
         <div className="flex gap-2">
           <input
             id={`from-website-${kind}`}
@@ -135,6 +180,7 @@ export function FromWebsite({ kind, multiple = false, onFiles }: FromWebsiteProp
             onChange={(e) => setUrl(e.target.value)}
             placeholder="customer-website.com…"
             disabled={!!busy}
+            autoFocus
             className="flex-1 min-w-0 min-h-11 bg-surface border border-border rounded-button text-text text-[16px] md:text-[14px] px-3 outline-none focus:border-border-focus disabled:opacity-60"
           />
           <Button type="submit" variant="primary" disabled={!!busy}>
@@ -150,6 +196,12 @@ export function FromWebsite({ kind, multiple = false, onFiles }: FromWebsiteProp
 
       {found && (
         <div className="mt-4">
+          {onExperience && found.experience.length > 0 && (
+            <p className="text-xs text-text rounded-xl border-[1.5px] border-primary bg-primary-bg px-3.5 py-3 mb-3">
+              <span className="font-semibold">Experience page with {found.experience.length} photo{found.experience.length === 1 ? "" : "s"}.</span>{" "}
+              Use full experience crops them all at once: the main photo and the secondary photos, in page order.
+            </p>
+          )}
           <p className="text-xs text-text-secondary mb-2">
             {found.items.length} {noun}
             {found.items.length === 1 ? "" : "s"} on {found.site}. {multiple ? "Pick one or more." : "Pick one."}
@@ -182,16 +234,32 @@ export function FromWebsite({ kind, multiple = false, onFiles }: FromWebsiteProp
               );
             })}
           </ul>
-          <div className="flex justify-end mt-3">
-            <Button type="button" variant="primary" onClick={use} disabled={!picked.length || !!busy}>
-              {busy === "load"
-                ? "Loading…"
-                : picked.length > 1
-                  ? `Use ${picked.length} ${noun}s`
-                  : `Use ${noun}`}
-            </Button>
-          </div>
         </div>
+      )}
+
+      {found ? (
+        // Sticky: the way on stays in view while scrolling a long grid.
+        <div className="sticky bottom-0 z-10 -mx-[22px] mt-4 px-[22px] py-3 bg-surface border-t border-border rounded-b-2xl shadow-[0_-6px_16px_rgba(2,44,18,0.06)] flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-text-secondary mr-auto tabular-nums" aria-live="polite">
+            {picked.length
+              ? `${picked.length} ${noun}${picked.length === 1 ? "" : "s"} picked`
+              : multiple ? `Pick one or more ${noun}s` : `Pick a ${noun}`}
+          </span>
+          {onExperience && found.experience.length > 0 && (
+            <Button type="button" onClick={() => loadUrls(found.experience, onExperience)} disabled={!!busy}>
+              Use full experience ({found.experience.length})
+            </Button>
+          )}
+          <Button type="button" variant="primary" onClick={() => loadUrls(picked, onFiles)} disabled={!picked.length || !!busy}>
+            {busy === "load"
+              ? "Loading…"
+              : picked.length > 1
+                ? `Use ${picked.length} ${noun}s`
+                : `Use ${noun}`}
+          </Button>
+        </div>
+      ) : (
+        <div className="pb-5" />
       )}
     </div>
   );

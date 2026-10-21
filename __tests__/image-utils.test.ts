@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cropFilename, dispSize } from "@/lib/image-utils";
+import { cropFilename, dispSize, orderedName, queueCropFilename } from "@/lib/image-utils";
 
 describe("cropFilename", () => {
   it("appends _crop.png to filename", () => {
@@ -42,5 +42,23 @@ describe("dispSize", () => {
     const originalRatio = nw / nh;
     const resultRatio = result.dw / result.dh;
     expect(resultRatio).toBeCloseTo(originalRatio, 1);
+  });
+});
+
+describe("queueCropFilename", () => {
+  it("leads Full experience files with page position and role, so files sort in page order", () => {
+    expect(queueCropFilename("studio.jpg", 0, "main")).toBe("1-main_studio_crop.png");
+    expect(queueCropFilename("wheel.jpg", 2, "secondary")).toBe("3-secondary_wheel_crop.png");
+  });
+
+  it("keeps the plain name outside a set", () => {
+    expect(queueCropFilename("studio.jpg", 3)).toBe(cropFilename("studio.jpg"));
+  });
+});
+
+describe("orderedName", () => {
+  it("prefixes any tool's file name with page position and role, and leaves others alone", () => {
+    expect(orderedName("wheel_extended.png", 1, "secondary")).toBe("2-secondary_wheel_extended.png");
+    expect(orderedName("wheel_extended.png", 1)).toBe("wheel_extended.png");
   });
 });

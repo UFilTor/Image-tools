@@ -3,11 +3,13 @@ import { fetchText } from "./fetch";
 import {
   dedupeExperiences,
   experienceLinks,
+  experiencePagePhotos,
   extractExperiences,
   extractLogos,
   extractPhotos,
   pageAsExperience,
   parseHtml,
+  unwrapOptimizer,
 } from "./parse";
 
 // Reads one website and returns logo and photo candidates. Experiences (title,
@@ -69,8 +71,9 @@ export async function scrapeWebsite(url: string): Promise<ScrapeResult> {
 
   // Experience photos are worth offering as photos too.
   for (const exp of experiences) {
-    if (exp.imageUrl && !photos.has(exp.imageUrl.split("?")[0])) {
-      photos.set(exp.imageUrl.split("?")[0], { url: exp.imageUrl, alt: exp.title, score: 70 });
+    const imageUrl = unwrapOptimizer(exp.imageUrl, main.url);
+    if (imageUrl && !photos.has(imageUrl.split("?")[0])) {
+      photos.set(imageUrl.split("?")[0], { url: imageUrl, alt: exp.title, score: 70 });
     }
   }
 
@@ -80,6 +83,7 @@ export async function scrapeWebsite(url: string): Promise<ScrapeResult> {
     description: page.description,
     logos: logos.sort((a, b) => b.score - a.score).slice(0, 8),
     photos: [...photos.values()].sort((a, b) => b.score - a.score).slice(0, MAX_PHOTOS),
+    experiencePhotos: experiencePagePhotos(page),
     pagesFetched,
   };
 }

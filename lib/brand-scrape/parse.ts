@@ -96,6 +96,23 @@ export function resolveUrl(candidate: string | undefined, baseUrl: string): stri
   }
 }
 
+// Next.js and Vercel image optimizers serve every image from one path (/_next/image?url=…), so
+// keyed by path all of a site's photos collapsed into one (2026-10-21: an Understory experience
+// page showed 1 of its 4 photos). The original image is the real photo, and full size too.
+const OPTIMIZER_PATH_RE = /\/_(?:next|vercel)\/image\/?$/;
+
+export function unwrapOptimizer(url: string | undefined, baseUrl: string): string | undefined {
+  if (!url || url.startsWith("data:")) return url;
+  try {
+    const parsed = new URL(url);
+    if (!OPTIMIZER_PATH_RE.test(parsed.pathname)) return url;
+    const inner = parsed.searchParams.get("url");
+    return (inner && resolveUrl(inner, baseUrl)) || url;
+  } catch {
+    return url;
+  }
+}
+
 /** What JSON.parse can return. Image Tools copy: replaces the kit's `unknown` + casts. */
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
@@ -309,7 +326,7 @@ export function extractLogos(page: PageData): ImageCandidate[] {
 export function extractPhotos(page: PageData, baseScore = 0): ImageCandidate[] {
   const found = new Map<string, ImageCandidate>();
   const add = (url: string | undefined, score: number, alt?: string) => {
-    const resolved = resolveUrl(url, page.url);
+    const resolved = unwrapOptimizer(resolveUrl(url, page.url), page.url);
     if (!resolved || resolved.startsWith("data:")) return;
     if (NON_PHOTO_RE.test(resolved)) return;
     const key = resolved.split("?")[0];
@@ -336,6 +353,39 @@ export function extractPhotos(page: PageData, baseScore = 0): ImageCandidate[] {
   }
 
   return [...found.values()].sort((a, b) => b.score - a.score);
+}
+
+// TODO(simplification): every media.understory.io/experience/ <img> on an /experience/ page counts
+// as the gallery, in DOM order. Ceiling: if the page ever shows other experiences' photos (related
+// experiences, reviews), they join the set and shift the roles. Upgrade path: scope the search to
+// the gallery section (the grid with grid-template-rows: repeat(N, 1fr)).
+const UNDERSTORY_EXPERIENCE_PHOTO_RE = /^https:\/\/media\.understory\.io\/experience\//;
+
+/**
+ * An Understory experience page's own photos in page order (the gallery's main photo first), for
+ * Crop's "Use full experience". Empty on any other page. The gallery is the only place an
+ * experience page shows experience photos (checked 2026-10-21); og:image only fills in when the
+ * gallery markup has none.
+ */
+export function experiencePagePhotos(page: PageData): string[] {
+  let path = "";
+  try {
+    path = new URL(page.url).pathname;
+  } catch {
+    return [];
+  }
+  if (!/\/experience\/[^/]+/.test(path)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [...page.imgs.map((img) => imageSource(img.attrs)), page.ogImage]) {
+    const url = unwrapOptimizer(resolveUrl(raw, page.url), page.url);
+    if (!url || !UNDERSTORY_EXPERIENCE_PHOTO_RE.test(url)) continue;
+    const key = url.split("?")[0];
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(url);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

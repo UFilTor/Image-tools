@@ -1,7 +1,7 @@
 import { CropRect, NaturalSize, DisplaySize, MultiCropItem, CropQueueItem, UpscaleItem, UpscaleFactor, ExtendQueueItem } from "./types";
-import { cropToBlob, cropFilename, loadImageEl, canvasToBlob } from "./image-utils";
+import { cropToBlob, queueCropFilename, orderedName, loadImageEl, canvasToBlob } from "./image-utils";
 import { upscaleFilename } from "./upscale";
-import type { SafeZone } from "./storefront";
+import { safeZoneForRatio, type SafeZone } from "./storefront";
 import { extendGeometry, renderExtended, extendFilename, extendSizeError, ExtendFill } from "./extend-utils";
 
 export interface DownloadResult {
@@ -83,16 +83,20 @@ export async function dlCrop(
 }
 
 export function dlAll(items: MultiCropItem[]): Promise<DownloadResult> {
-  const ready = items.filter((it) => it.status === "done" && it.crop);
+  // Index before filtering, so names keep each photo's page position.
+  const ready = items.map((it, i) => ({ it, i })).filter(({ it }) => it.status === "done" && it.crop);
   return zipAndDownload(
-    ready.map((it) => ({ name: cropFilename(it.name), blob: () => cropToBlob(it.src, it.natural, it.disp, it.crop!) })),
+    ready.map(({ it, i }) => ({
+      name: queueCropFilename(it.name, i, it.preset?.role),
+      blob: () => cropToBlob(it.src, it.natural, it.disp, it.crop!),
+    })),
     "crops.zip",
   );
 }
 
 export function dlAllCropQueue(items: CropQueueItem[]): Promise<DownloadResult> {
   return zipAndDownload(
-    items.map((it) => ({ name: cropFilename(it.name), blob: () => cropToBlob(it.src, it.natural, it.disp, it.crop) })),
+    items.map((it, i) => ({ name: queueCropFilename(it.name, i, it.preset?.role), blob: () => cropToBlob(it.src, it.natural, it.disp, it.crop) })),
     "crops.zip",
   );
 }
@@ -129,32 +133,40 @@ export async function dlExtended(
   padding: number,
   fill: ExtendFill,
   safe: SafeZone | null = null,
+  fileName = extendFilename(item.name),
 ): Promise<DownloadResult> {
   const sizeErr = extendSizeError(extendGeometry(item.natural, ratio, padding, safe));
   if (sizeErr) return { ok: false, error: sizeErr };
   try {
     const blob = await extendedBlob(item, ratio, padding, fill, safe);
     if (!blob) return FAIL;
-    triggerDownload(blob, extendFilename(item.name));
+    triggerDownload(blob, fileName);
     return { ok: true };
   } catch {
     return FAIL;
   }
 }
 
+/**
+ * Every Extend result in one zip. Each photo is extended at its own shape in Full experience (the
+ * batch `ratio` otherwise), and "Fit inside safe zone" uses that shape's safe zone.
+ */
 export function dlAllExtended(
   items: ExtendQueueItem[],
   ratio: number | null,
   padding: number,
   fill: ExtendFill,
-  safe: SafeZone | null = null,
+  fitSafe = false,
 ): Promise<DownloadResult> {
   return zipAndDownload(
-    items.map((it) => ({
-      name: extendFilename(it.name),
-      // A size-limit throw skips that entry, like any other failed render.
-      blob: () => extendedBlob(it, ratio, padding, fill, safe),
-    })),
+    items.map((it, i) => {
+      const r = it.preset ? it.preset.value : ratio;
+      return {
+        name: orderedName(extendFilename(it.name), i, it.preset?.role),
+        // A size-limit throw skips that entry, like any other failed render.
+        blob: () => extendedBlob(it, r, padding, fill, fitSafe ? safeZoneForRatio(r) : null),
+      };
+    }),
     "extended.zip",
   );
 }

@@ -15,13 +15,14 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Badge } from "@/components/ui/badge";
 import { SizeInput } from "@/components/ui/size-input";
 import { dlCrop, dlAllCropQueue } from "@/lib/download";
-import { cropFilename, cropToBlob } from "@/lib/image-utils";
+import { cropToBlob, queueCropFilename } from "@/lib/image-utils";
 import { DlIcon } from "@/components/icons";
 import { FromWebsite } from "@/components/ui/from-website";
 import { LoadError } from "@/components/ui/load-error";
 import { SendTo } from "@/components/ui/send-to";
 import { SizeWarning } from "@/components/ui/size-warning";
 import { SafeZoneToggle } from "@/components/crop/safe-zone-toggle";
+import { SecondaryCountSwitch } from "@/components/crop/secondary-count-switch";
 
 export default function CropPage() {
   const {
@@ -29,12 +30,14 @@ export default function CropPage() {
     crop, setCrop, src, name, nat, disp,
     zoom, setZoom, pan, setPan,
     cropPx, cropPy, isMulti,
-    loadImage, loadWithRatio, pickRatio, navigateTo, goToRatio, reset, reportLoadError, loadError,
+    loadImage, loadWithRatio, pickRatio, changeRatio, navigateTo, goToRatio, reset, reportLoadError, loadError,
+    isSet, setNote, loadExperienceSet, pickSet, makeMain,
   } = useToolState().crop;
   const { startDrag } = useCropDrag();
   useClipboardPaste(step === "upload" ? loadImage : null, reportLoadError);
   const dl = useDownload();
-  const downloadCurrent = () => src && dl.run(() => dlCrop(src, nat, disp, crop, cropFilename(name)));
+  const fileName = queueCropFilename(name, currentIdx, current?.preset?.role);
+  const downloadCurrent = () => src && dl.run(() => dlCrop(src, nat, disp, crop, fileName));
 
   const resetConfirm = useConfirm({ onConfirm: reset, count: queue.length, threshold: 1 });
 
@@ -51,7 +54,7 @@ export default function CropPage() {
   return (
     <div className="w-full max-w-[1200px]">
       {step === "upload" && (
-        <div className="max-w-[662px] w-full mx-auto mt-16 animate-fadeUp">
+        <div className="max-w-[662px] w-full mx-auto mt-10 animate-fadeUp">
           <div className="text-center mb-2">
             <h1 className="font-display uppercase font-bold text-[44px] text-primary leading-[0.95] tracking-[-0.005em] mb-2">
               Crop
@@ -60,8 +63,9 @@ export default function CropPage() {
               Drop images onto a ratio to start cropping.
             </p>
           </div>
-          <RatioDropZones onDropWithRatio={loadWithRatio} />
-          <FromWebsite kind="photo" multiple onFiles={loadImage} />
+          <FromWebsite kind="photo" multiple onFiles={loadImage} onExperience={loadExperienceSet}>
+            <RatioDropZones onDropWithRatio={loadWithRatio} onDropSet={loadExperienceSet} />
+          </FromWebsite>
           <LoadError message={loadError} />
         </div>
       )}
@@ -71,6 +75,7 @@ export default function CropPage() {
           <RatioPicker
             subtitle="Step 1 of 2"
             onPick={pickRatio}
+            onPickSet={pickSet}
             onBack={resetConfirm.fire}
             backLabel={resetConfirm.armed ? `Press again to clear ${queue.length} image${queue.length === 1 ? "" : "s"}` : "← Go back"}
           />
@@ -82,6 +87,8 @@ export default function CropPage() {
           <div className="flex items-center gap-2.5 mb-1 flex-wrap justify-center">
             <span className="font-display uppercase font-bold text-[18px] text-primary tracking-[0.02em]">Edit crop</span>
             <Badge>{ratioLabel}</Badge>
+            {/* Full experience sets each photo's count from the set, so there's nothing to switch */}
+            {!isSet && <SecondaryCountSwitch ratio={ratio} onChange={changeRatio} />}
             {isMulti && (
               <span className="text-[13px] text-text-muted font-medium tabular-nums">
                 {currentIdx + 1} of {queue.length}
@@ -89,8 +96,9 @@ export default function CropPage() {
             )}
             <SafeZoneToggle ratio={ratio} />
             <SizeInput cropPx={cropPx} cropPy={cropPy} ratio={ratio} crop={crop} setCrop={setCrop} disp={disp} nat={nat} />
-            <SizeWarning ratio={ratio} widthPx={cropPx} fileName={cropFilename(name)} getBlob={() => cropToBlob(src, nat, disp, crop)} />
+            <SizeWarning ratio={ratio} widthPx={cropPx} fileName={fileName} getBlob={() => cropToBlob(src, nat, disp, crop)} />
           </div>
+          {setNote && <p className="text-xs text-text-secondary text-center -mt-2" role="status">{setNote}</p>}
           <ZoomableEditor
             src={src} disp={disp} crop={crop} setCrop={setCrop} ratio={ratio}
             onDown={(e, t) => startDrag(e, t, crop, setCrop, ratio, disp.dw, disp.dh, zoom)}
@@ -101,13 +109,18 @@ export default function CropPage() {
               <Button size="sm" aria-label="Previous image" onClick={() => navigateTo(currentIdx - 1)} disabled={currentIdx === 0}>
                 ← Prev
               </Button>
-              <ImageFilmstrip items={queue} currentIdx={currentIdx} onSelect={navigateTo} />
+              <ImageFilmstrip
+                items={queue.map((q) => ({ src: q.src, adjusted: q.adjusted, tag: q.preset?.role === "main" ? "Main" : undefined }))}
+                currentIdx={currentIdx}
+                onSelect={navigateTo}
+              />
               <Button size="sm" aria-label="Next image" onClick={() => navigateTo(currentIdx + 1)} disabled={currentIdx === queue.length - 1}>
                 Next →
               </Button>
             </div>
           )}
           <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
+            {current?.preset?.role === "secondary" && <Button onClick={makeMain}>Make main photo</Button>}
             <Button onClick={goToRatio}>Change ratio</Button>
             <ConfirmButton
               armed={resetConfirm.armed}
@@ -125,7 +138,7 @@ export default function CropPage() {
               </Button>
             )}
             {src && (
-              <SendTo from="crop" fileName={cropFilename(name)} getBlob={() => cropToBlob(src, nat, disp, crop)} disabled={dl.busy} />
+              <SendTo from="crop" fileName={fileName} getBlob={() => cropToBlob(src, nat, disp, crop)} disabled={dl.busy} />
             )}
           </div>
           {dl.error && <p className="text-sm text-error font-medium text-center" role="alert">{dl.error}</p>}

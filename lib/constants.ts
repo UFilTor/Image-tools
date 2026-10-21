@@ -1,11 +1,44 @@
 import { Ratio } from "./types";
 
+/** Crop presets in display order; number keys 1-5 pick them in this order everywhere. */
 export const RATIOS: Ratio[] = [
   { label: "Square", sub: "1:1", value: 1 },
   // Storefront presets, chosen 2026-10-21 from measured storefront slots (lib/storefront.ts).
   { label: "Experience", sub: "3:2", value: 3 / 2, slot: "experience" },
+  // One card for the experience page's secondary photos; it starts at 3 photos (the most a page
+  // shows) and the editor's 1 / 2 / 3 switch picks the shape for the count (SECONDARY_RATIOS).
+  { label: "Secondary photo", sub: "1, 2 or 3 photos", value: 5 / 3, slot: "secondary3" },
   { label: "Cover image", sub: "16:10", value: 16 / 10, slot: "cover" },
   { label: "Free", sub: "Original", value: null },
+];
+
+/** The card for a whole experience (Crop, Smart Crop, Extend): main photo plus secondary photos. */
+export const FULL_EXPERIENCE = { label: "Full experience", sub: "Main + secondary photos" } as const;
+
+export type UploadCard = { kind: "ratio"; ratio: Ratio } | { kind: "set" };
+
+/**
+ * Upload and ratio-picker cards in key order (1, 2, …): the ratios, with Full experience right
+ * after Secondary photo where it's offered, so the experience page's cards sit together and Free
+ * stays last. Shared by the cards, Extend's Target ratio and the help panel.
+ */
+export function uploadCards(withFullExperience: boolean): UploadCard[] {
+  const cards: UploadCard[] = RATIOS.map((ratio) => ({ kind: "ratio", ratio }));
+  if (withFullExperience) {
+    const secondary = cards.findIndex((c) => c.kind === "ratio" && c.ratio.slot?.startsWith("secondary"));
+    cards.splice(secondary < 0 ? cards.length : secondary + 1, 0, { kind: "set" });
+  }
+  return cards;
+}
+
+/** Opens "Fetch from a website" on every upload screen: the number after the cards. */
+export const FETCH_KEY = String(uploadCards(true).length + 1);
+
+/** Secondary photo shapes per count, balanced over phone, tablet and desktop (chosen 2026-10-21). */
+export const SECONDARY_RATIOS: (Ratio & { value: number; count: 1 | 2 | 3 })[] = [
+  { count: 1, label: "Secondary photo", sub: "4:5", value: 4 / 5, slot: "secondary1" },
+  { count: 2, label: "Secondary photo", sub: "4:3", value: 4 / 3, slot: "secondary2" },
+  { count: 3, label: "Secondary photo", sub: "5:3", value: 5 / 3, slot: "secondary3" },
 ];
 
 export const MAX_FILE_SIZE_MB = 20;
@@ -39,7 +72,7 @@ export function isAcceptedFile(file: File): boolean {
 
 export const SHORTCUT_MAP = {
   modes: ["crop", "smart-crop", "extend", "upscale", "logo"] as const,
-  ratios: [0, 1, 2, 3] as const, // indices into RATIOS
+  ratios: [0, 1, 2, 3, 4] as const, // indices into RATIOS
 };
 
 /** A tool's route segment ("/upscale" → "upscale"). */

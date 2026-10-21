@@ -11,6 +11,8 @@ import {
   isoDuration,
   pageAsExperience,
   parseHtml,
+  experiencePagePhotos,
+  unwrapOptimizer,
 } from "@/lib/brand-scrape/parse";
 import { assertPublicHttpUrl, isPrivateAddress, withProtocol } from "@/lib/brand-scrape/fetch";
 
@@ -262,5 +264,43 @@ describe("isPrivateAddress (resolved-address guard added in Image Tools)", () =>
   it("adds https to bare domains", () => {
     expect(withProtocol(" understory.io ")).toBe("https://understory.io");
     expect(withProtocol("http://x.se")).toBe("http://x.se");
+  });
+});
+
+describe("image optimizer URLs (Next.js / Vercel)", () => {
+  const base = "https://shop.example.com/experience/abc";
+
+  it("unwraps to the original image, resolving a relative one against the page", () => {
+    expect(unwrapOptimizer("https://shop.example.com/_next/image?url=%2Fimg%2Fa.jpg&w=640&q=75", base)).toBe(
+      "https://shop.example.com/img/a.jpg",
+    );
+    expect(
+      unwrapOptimizer("https://shop.example.com/_vercel/image?w=750&q=75&url=https%3A%2F%2Fmedia.understory.io%2Fexperience%2F%2Fcover%2FX.false", base),
+    ).toBe("https://media.understory.io/experience//cover/X.false");
+    expect(unwrapOptimizer("https://cdn.example.com/photo.jpg?w=900", base)).toBe("https://cdn.example.com/photo.jpg?w=900");
+  });
+
+  it("keeps every photo a site serves through the optimizer, instead of collapsing them into one", () => {
+    const html = `<img src="/_vercel/image?w=3840&q=75&url=https%3A%2F%2Fcdn.example.com%2Fa.jpg">
+      <img src="/_vercel/image?w=3840&q=75&url=https%3A%2F%2Fcdn.example.com%2Fb.jpg">`;
+    const urls = extractPhotos(parseHtml(html, base)).map((p) => p.url);
+    expect(urls).toEqual(["https://cdn.example.com/a.jpg", "https://cdn.example.com/b.jpg"]);
+  });
+});
+
+describe("experiencePagePhotos", () => {
+  const gallery = `<meta property="og:image" content="https://media.understory.io/experience//cover/MAIN.false">
+    <img src="https://media.understory.io/company/c1/cover/COVER.png">
+    <img srcset="/_vercel/image?w=640&url=https%3A%2F%2Fmedia.understory.io%2Fexperience%2F%2Fcover%2FMAIN.false 640w">
+    <img srcset="/_vercel/image?w=640&url=https%3A%2F%2Fmedia.understory.io%2Fexperience%2F%2Fcover%2FSECOND.false 640w">
+    <img srcset="/_vercel/image?w=640&url=https%3A%2F%2Fmedia.understory.io%2Fexperience%2F%2Fcover%2FTHIRD.false 640w">`;
+
+  it("lists an experience page's own photos in page order, main photo first, once each", () => {
+    const urls = experiencePagePhotos(parseHtml(gallery, "https://nos.understory.io/experience/87601ae3"));
+    expect(urls.map((u) => u.split("/").pop())).toEqual(["MAIN.false", "SECOND.false", "THIRD.false"]);
+  });
+
+  it("is empty on pages that aren't experience pages", () => {
+    expect(experiencePagePhotos(parseHtml(gallery, "https://nos.understory.io/en"))).toEqual([]);
   });
 });
