@@ -12,6 +12,7 @@ import { ExtendControls } from "@/components/extend/extend-controls";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Badge } from "@/components/ui/badge";
+import { SafeZoneToggle } from "@/components/crop/safe-zone-toggle";
 import { dlExtended, dlAllExtended, extendedBlob } from "@/lib/download";
 import { extendFilename } from "@/lib/extend-utils";
 import { DlIcon } from "@/components/icons";
@@ -74,6 +75,7 @@ export default function ExtendPage() {
                 {currentIdx + 1} of {queue.length}
               </span>
             )}
+            <SafeZoneToggle ratio={ratio} />
           </div>
 
           <div className="flex flex-col lg:flex-row items-center lg:items-start gap-5 w-full justify-center">

@@ -22,6 +22,7 @@ import { FromWebsite } from "@/components/ui/from-website";
 import { LoadError } from "@/components/ui/load-error";
 import { SendTo } from "@/components/ui/send-to";
 import { SizeWarning } from "@/components/ui/size-warning";
+import { SafeZoneToggle } from "@/components/crop/safe-zone-toggle";
 
 export default function SmartCropPage() {
   const {
@@ -115,6 +116,7 @@ export default function SmartCropPage() {
             <span className="text-[13px] text-text-muted font-medium tabular-nums">
               {editIdx + 1} of {items.length}
             </span>
+            <SafeZoneToggle ratio={ratio} />
             <SizeInput
               cropPx={editCropPx}
               cropPy={editCropPy}

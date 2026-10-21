@@ -22,18 +22,26 @@ interface LogoControlsProps {
   setRecolor: (v: string) => void;
   customHex: string;
   setCustomHex: (v: string) => void;
+  /** Background fill color, or null */
+  bgFill: string | null;
+  setBgFill: (v: string | null) => void;
   /** Section rendered between background removal and recolor (the color-change list). */
   children?: ReactNode;
 }
 
 export function LogoControls({
-  isTransparent, bgMode, setBgMode, bgStatus, emptyResult, recolor, setRecolor, customHex, setCustomHex, children,
+  isTransparent, bgMode, setBgMode, bgStatus, emptyResult, recolor, setRecolor, customHex, setCustomHex,
+  bgFill, setBgFill, children,
 }: LogoControlsProps) {
+  // A fill only shows behind transparent areas; on an opaque logo the background is just a color
+  // in Changes.
+  const canFill = isTransparent || bgMode !== "off";
+
   return (
     <div className="bg-surface border border-border rounded-2xl px-[22px] py-5 flex flex-col gap-[18px]">
       {/* Background removal section */}
       <div>
-        <div className="text-[13px] font-semibold text-text mb-2.5">Background removal</div>
+        <div className="text-[13px] font-semibold text-text mb-2.5">Background</div>
         {isTransparent ? (
           <div className="inline-flex items-center gap-2 bg-lichen text-primary text-[13px] font-medium px-3 py-2 rounded-lg">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -82,6 +90,28 @@ export function LogoControls({
               </p>
             )}
           </>
+        )}
+        {canFill && (
+          <div className="flex items-center gap-2.5 mt-3 min-h-9">
+            <label className="flex items-center gap-2 cursor-pointer text-[13px] font-medium text-text">
+              <input
+                type="checkbox"
+                checked={bgFill !== null}
+                onChange={(e) => setBgFill(e.target.checked ? "#FFFFFF" : null)}
+                className="w-4 h-4 accent-primary cursor-pointer"
+              />
+              Fill the background with a color
+            </label>
+            {bgFill !== null && (
+              <input
+                type="color"
+                value={bgFill.toLowerCase()}
+                onChange={(e) => setBgFill(e.target.value.toUpperCase())}
+                aria-label="Background fill color"
+                className="w-9 h-9 border-2 border-border rounded-button bg-surface cursor-pointer p-0.5"
+              />
+            )}
+          </div>
         )}
       </div>
 

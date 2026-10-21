@@ -2,10 +2,10 @@
 
 import { useState, useCallback, useRef } from "react";
 import { BoundingBox, NaturalSize } from "@/lib/types";
-import { removeBg, recolorCanvas, detectBackground } from "@/lib/logo-processing";
+import { removeBg, recolorCanvas, fillCanvas, detectBackground } from "@/lib/logo-processing";
 import {
-  LogoEdit, NewLogoEdit, HEX_RE, PaletteColor, applyEdits, canvasPalette, contrastingHex, isErase, sampleColor, snapBoxOnCanvas,
-  snapToPalette,
+  LogoEdit, NewLogoEdit, HEX_RE, PaletteColor, applyEdits, canvasPalette, contrastingHex, currentBackground, isErase, sampleColor,
+  snapBoxOnCanvas, snapToPalette,
 } from "@/lib/logo-edits";
 import { removeBgAI } from "@/lib/bg-removal";
 import { checkApiAvailable, checkGatewayAvailable, requestImageEdit, requestLogoEdit } from "@/lib/ai-client";
@@ -26,11 +26,13 @@ interface LogoSettings {
   edits: LogoEdit[];
   recolor: string;
   customHex: string;
+  /** Background fill: color painted behind transparent areas, or null */
+  bgFill: string | null;
 }
 
 const ERASE_HINT = "Drag a box over the part to remove. Shapes mostly inside it are removed whole.";
 
-const DEFAULT_SETTINGS: LogoSettings = { bgMode: "color", edits: [], recolor: "none", customHex: "#022C12" };
+const DEFAULT_SETTINGS: LogoSettings = { bgMode: "color", edits: [], recolor: "none", customHex: "#022C12", bgFill: null };
 
 interface BgStatus {
   busy: boolean;
@@ -148,7 +150,7 @@ export function useLogoProcessor() {
       edited = applyEdits(base, s.edits, BG_TOLERANCE, {
         bgHint: s.bgMode === "color" ? bgColorRef.current : null,
         // With the background kept, erased shapes are painted over in the background color.
-        bg: s.bgMode === "off" ? bgColorRef.current : null,
+        bg: s.bgMode === "off" ? currentBackground(bgColorRef.current, s.edits, BG_TOLERANCE * 2) : null,
         transparent: s.bgMode !== "off",
       });
       setEditError(null);
@@ -160,7 +162,9 @@ export function useLogoProcessor() {
     // silently dropping the recolor.
     if (HEX_RE.test(s.customHex)) lastHexRef.current = s.customHex;
     const wholeHex = s.recolor === "custom" ? lastHexRef.current : s.recolor;
-    const final = s.recolor !== "none" && HEX_RE.test(wholeHex) ? recolorCanvas(edited, wholeHex) : edited;
+    const recolored = s.recolor !== "none" && HEX_RE.test(wholeHex) ? recolorCanvas(edited, wholeHex) : edited;
+    // The fill goes last, behind everything, so recolor and edits never touch it.
+    const final = s.bgFill && HEX_RE.test(s.bgFill) ? fillCanvas(recolored, s.bgFill) : recolored;
     editedRef.current = edited;
     finalRef.current = final;
     const pal = canvasPalette(edited, BG_TOLERANCE);
@@ -250,6 +254,7 @@ export function useLogoProcessor() {
 
   const setBgMode = useCallback((bgMode: BgMode) => update({ bgMode }), [update]);
   const setRecolor = useCallback((recolor: string) => update({ recolor }), [update]);
+  const setBgFill = useCallback((bgFill: string | null) => update({ bgFill }), [update]);
   const setCustomHex = useCallback((customHex: string) => {
     // A partial hex while typing updates the field but waits to re-render until it is valid.
     if (HEX_RE.test(customHex)) update({ customHex });
@@ -348,13 +353,26 @@ export function useLogoProcessor() {
     const forImg = imgRef.current;
     setClaude((c) => ({ ...c, busy: true, note: null, error: null }));
     try {
-      const res = await requestLogoEdit(cv, instruction.trim(), paletteRef.current, settingsRef.current.bgMode !== "off");
+      const s = settingsRef.current;
+      // The kept background color, named so Claude can recolor it ("make the background green").
+      // Snapped to the palette, since `from` must be a measured color.
+      const bg = s.bgMode === "off" && !isTransparent ? currentBackground(bgColorRef.current, s.edits, BG_TOLERANCE * 2) : null;
+      const bgHex = bg ? snapToPalette(bg, paletteRef.current, BG_TOLERANCE * 2) : null;
+      const res = await requestLogoEdit(cv, instruction.trim(), paletteRef.current, {
+        bgRemoved: s.bgMode !== "off",
+        bgColor: bgHex && paletteRef.current.some((c) => c.hex === bgHex) ? bgHex : null,
+        transparent: isTransparent || s.bgMode !== "off",
+        fill: s.bgFill,
+      });
       if (imgRef.current !== forImg) return;
       const cur = settingsRef.current;
       let bgMode = cur.bgMode;
       if (!isTransparent && res.background === "remove" && bgMode === "off") bgMode = "color";
       if (!isTransparent && res.background === "keep") bgMode = "off";
-      if (bgMode !== cur.bgMode) update({ bgMode });
+      const patch: Partial<LogoSettings> = {};
+      if (bgMode !== cur.bgMode) patch.bgMode = bgMode;
+      if (res.fill !== null) patch.bgFill = res.fill === "none" ? null : res.fill;
+      if (Object.keys(patch).length) update(patch);
       // Claude's boxes are rough; grow each one to whole shapes of its color so letters aren't cut.
       const snapped = res.edits.map((e) => (e.box ? { ...e, box: snapBoxOnCanvas(cv, e.from, e.box, BG_TOLERANCE) } : e));
       // Erase boxes need no snapping: eraseShapes already removes whole shapes.
@@ -362,7 +380,7 @@ export function useLogoProcessor() {
       const all: NewLogoEdit[] = [...erases, ...snapped];
       const added = all.length ? addEdits(all) : [];
       if (added.length) setActiveEditId(added[0].id);
-      const fallback = added.length || bgMode !== cur.bgMode ? "Done." : "No changes made.";
+      const fallback = added.length || Object.keys(patch).length ? "Done." : "No changes made.";
       setClaude((c) => ({ ...c, busy: false, note: res.note || fallback, error: null }));
     } catch (err) {
       if (imgRef.current !== forImg) return;
@@ -452,6 +470,7 @@ export function useLogoProcessor() {
     step, src, name, nat, isTransparent,
     bgMode: settings.bgMode, setBgMode, bgStatus,
     recolor: settings.recolor, setRecolor, customHex: settings.customHex, setCustomHex,
+    bgFill: settings.bgFill, setBgFill,
     edits: settings.edits, updateEdit, removeEdit, activeEditId, setActiveEditId, palette,
     tool, toolHint, startPick, startBox, startErase, cancelTool, pickAt, setEditBox,
     claude, askClaude, editError, emptyResult,

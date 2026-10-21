@@ -97,7 +97,7 @@ export function AiAssist({ claude, onChangeColors, redraw, onRedraw, onAccept, o
         )}
       </div>
       <p className="text-[11px] text-text-secondary mt-2">
-        Apply changes colors, erases parts or removes the background, and keeps every shape as it is. Redraw image
+        Apply changes colors, erases parts and removes or fills the background, and keeps every shape as it is. Redraw image
         redraws the whole logo, so check every letter.
       </p>
 

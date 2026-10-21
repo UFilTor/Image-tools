@@ -1,6 +1,7 @@
 import { BoundingBox, FocalResult } from "./types";
 import { downscaleForAI, loadImageEl, logoForAI } from "./image-utils";
 import type { PaletteColor } from "./logo-edits";
+import type { LogoPromptContext } from "./logo-edit-prompt";
 import { isNetworkError, userMessage } from "./errors";
 
 let apiAvailable: boolean | null = null;
@@ -127,6 +128,8 @@ export interface LogoEditResult {
   /** Areas whose shapes should be removed */
   erase: BoundingBox[];
   background: "remove" | "keep" | "unchanged";
+  /** Background fill: "#RRGGBB" to set, "none" to clear, null to leave as is */
+  fill: string | null;
   note: string;
 }
 
@@ -135,7 +138,7 @@ export async function requestLogoEdit(
   canvas: HTMLCanvasElement,
   instruction: string,
   palette: PaletteColor[],
-  bgRemoved: boolean,
+  context: LogoPromptContext,
 ): Promise<LogoEditResult> {
   const payload = await logoForAI(canvas);
   const controller = new AbortController();
@@ -144,7 +147,7 @@ export async function requestLogoEdit(
     const res = await fetch("/api/logo-edit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, instruction, palette, bgRemoved }),
+      body: JSON.stringify({ ...payload, instruction, palette, ...context }),
       signal: controller.signal,
     });
     const data = await res.json();
@@ -161,7 +164,7 @@ export async function requestLogoEdit(
 
 let gatewayAvailable: Promise<boolean> | null = null;
 
-/** Whether the AI Gateway is configured (image fill / redraw). A failed check is not cached. */
+/** Whether the AI Gateway is configured (logo redraw). A failed check is not cached. */
 export function checkGatewayAvailable(): Promise<boolean> {
   gatewayAvailable ??= fetch("/api/image-edit/health")
     .then((r) => r.json())

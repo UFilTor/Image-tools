@@ -1,3 +1,5 @@
+import { hexToRgb } from "./logo-edits";
+
 const OPAQUE = 250;
 
 export function hasTransparency(canvas: HTMLCanvasElement): boolean {
@@ -195,6 +197,34 @@ export function removeBg(
 
   ctx.putImageData(data, 0, 0);
   return canvas;
+}
+
+/**
+ * Background fill: paint `hexColor` behind every transparent or partly transparent pixel, so the
+ * result is opaque. Anti-aliased edges blend into the fill, so no fringe of the old background shows.
+ */
+export function fillTransparentPixels(px: Uint8ClampedArray, hexColor: string): void {
+  const [r, g, b] = hexToRgb(hexColor);
+  for (let i = 0; i < px.length; i += 4) {
+    const a = px[i + 3] / 255;
+    if (a === 1) continue;
+    px[i] = Math.round(px[i] * a + r * (1 - a));
+    px[i + 1] = Math.round(px[i + 1] * a + g * (1 - a));
+    px[i + 2] = Math.round(px[i + 2] * a + b * (1 - a));
+    px[i + 3] = 255;
+  }
+}
+
+export function fillCanvas(srcCanvas: HTMLCanvasElement, hexColor: string): HTMLCanvasElement {
+  const cv = document.createElement("canvas");
+  cv.width = srcCanvas.width;
+  cv.height = srcCanvas.height;
+  const ctx = cv.getContext("2d")!;
+  ctx.drawImage(srcCanvas, 0, 0);
+  const data = ctx.getImageData(0, 0, cv.width, cv.height);
+  fillTransparentPixels(data.data, hexColor);
+  ctx.putImageData(data, 0, 0);
+  return cv;
 }
 
 export function recolorCanvas(srcCanvas: HTMLCanvasElement, hexColor: string): HTMLCanvasElement {

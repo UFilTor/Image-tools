@@ -50,6 +50,27 @@ export function pickMode(natural: NaturalSize): ProcessMode {
   return Math.max(natural.w, natural.h) >= ENHANCE_THRESHOLD ? "enhance" : "upscale";
 }
 
+/** How another tool asks Upscale to start, overriding the defaults below. */
+export interface StartRequest {
+  mode?: ProcessMode;
+  factor?: UpscaleFactor;
+}
+
+/**
+ * "Upscale it" from the storefront size warning: always enlarge, and at 2x whatever scale was
+ * picked last, since 4x of a large crop can pass the output cap.
+ */
+export const ENLARGE_REQUEST: StartRequest = { mode: "upscale", factor: 2 };
+
+/** Mode and factor a newly loaded image starts with: the request's, else the size-based default and the session scale. */
+export function startSettings(
+  natural: NaturalSize,
+  scale: UpscaleFactor,
+  request?: StartRequest,
+): { mode: ProcessMode; factor: UpscaleFactor } {
+  return { mode: request?.mode ?? pickMode(natural), factor: request?.factor ?? scale };
+}
+
 /**
  * Size guard for enhance mode. Enhancement runs a 2x supersample internally before
  * downscaling back, so the intermediate must fit the same output caps.

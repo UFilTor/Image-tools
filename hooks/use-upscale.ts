@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import { UpscaleItem, UpscaleFactor } from "@/lib/types";
 import { revokeSrc } from "@/lib/image-utils";
 import { loadImageFiles } from "@/lib/load-images";
-import { sizeChangePlan, upscaleImage, measureDataUrl, modeSizeError, pickMode, disposeUpscaler, ProcessMode } from "@/lib/upscale";
+import { sizeChangePlan, upscaleImage, measureDataUrl, modeSizeError, startSettings, disposeUpscaler, ProcessMode, StartRequest } from "@/lib/upscale";
 
 type UpscaleStep = "upload" | "processing";
 
@@ -110,25 +110,23 @@ export function useUpscale() {
     void pump();
   }, [pump]);
 
-  /**
-   * `mode` and `factor` override the size-based default and the session scale: the storefront size
-   * warning wants a 2x upscale, whatever scale was picked last (4x of a large crop can pass the cap).
-   */
-  const loadAndUpscale = useCallback(async (files: FileList, mode?: ProcessMode, factor?: UpscaleFactor) => {
+  /** `request` overrides the size-based mode and the session scale (`ENLARGE_REQUEST` from the size warning). */
+  const loadAndUpscale = useCallback(async (files: FileList, request?: StartRequest) => {
     setLoadError(null);
     const { images, error } = await loadImageFiles(files);
     if (error) setLoadError(error);
     if (!images.length) return;
     const ok: UpscaleItem[] = images.map((r) => ({
       src: r.src, name: r.name, natural: r.nat,
-      mode: mode ?? pickMode(r.nat),
+      mode: startSettings(r.nat, scale, request).mode,
       status: "queued", progress: 0, result: null, resultNatural: null,
     }));
-    if (factor) setScale(factor);
+    const { factor } = startSettings(images[0].nat, scale, request); // the same for every image
+    setScale(factor);
     setItems(ok);
     setCurrentIdx(0);
     setStep("processing");
-    enqueue(ok.map((item, idx) => ({ idx, item, factor: factor ?? scale })));
+    enqueue(ok.map((item, idx) => ({ idx, item, factor })));
   }, [scale, enqueue]);
 
   // Re-run at a new scale. Enhance ignores the factor, so those results are kept as-is.

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   hexToRgb, rgbToHex, normalizeBox, contrastingHex, recolorPixels, extractPalette, snapToPalette, snapBox, eraseShapes, RGB,
+  currentBackground,
 } from "@/lib/logo-edits";
 
 /** Build an RGBA buffer from a row-major list of [r, g, b, a] pixels. */
@@ -219,5 +220,33 @@ describe("eraseShapes", () => {
     const px = new Uint8ClampedArray(big.buffer);
     expect(eraseShapes(px, w, h, { x1: 0, y1: 0, x2: 1, y2: 1 }, null, true, 40)).toBe(w * h);
     expect(px[3]).toBe(0);
+  });
+});
+
+describe("currentBackground", () => {
+  const bg: RGB = [250, 251, 249];
+  const box = { x1: 0, y1: 0, x2: 0.5, y2: 0.5 };
+
+  it("follows a whole-logo color edit from the background color", () => {
+    const edits = [{ id: "1", from: "#FAFBF9", to: "#3A4630", box: null }];
+    expect(currentBackground(bg, edits, 40)).toEqual([0x3a, 0x46, 0x30]);
+  });
+
+  it("ignores edits limited to an area, erases and other colors", () => {
+    const edits = [
+      { id: "1", from: "#FAFBF9", to: "#3A4630", box },
+      { id: "2", kind: "erase" as const, box },
+      { id: "3", from: "#0E1011", to: "#F5F5DC", box: null },
+    ];
+    expect(currentBackground(bg, edits, 40)).toEqual(bg);
+  });
+
+  it("chains edits in order and keeps null when there is no background", () => {
+    const edits = [
+      { id: "1", from: "#FAFBF9", to: "#3A4630", box: null },
+      { id: "2", from: "#3A4630", to: "#000000", box: null },
+    ];
+    expect(currentBackground(bg, edits, 40)).toEqual([0, 0, 0]);
+    expect(currentBackground(null, edits, 40)).toBeNull();
   });
 });

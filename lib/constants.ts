@@ -59,6 +59,7 @@ export const SEND_TARGETS: Record<ToolKey, readonly ToolKey[]> = {
 
 export const STORAGE_KEYS = {
   lastRatio: "image-tools:last-ratio",
+  safeZoneHidden: "image-tools:safe-zone-hidden",
 } as const;
 
 export const LOGO_RECOLOR_PRESETS = [

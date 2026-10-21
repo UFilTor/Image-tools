@@ -4,66 +4,12 @@ import { clientIp, rateLimited } from "@/lib/rate-limit";
 import { HEX_RE, normalizeBox } from "@/lib/logo-edits";
 import type { BoundingBox } from "@/lib/types";
 import { errorMessage } from "@/lib/errors";
+import { editPrompt, editSchema, parseFill, promptContext } from "@/lib/logo-edit-prompt";
 
 export const maxDuration = 60;
 
 const MAX_INSTRUCTION = 500;
 const MAX_PALETTE = 12;
-
-/**
- * Claude cannot draw, so it plans the edit and the browser applies it: a list of
- * "color A -> color B, optionally inside a box" changes plus a background flag. `from` is
- * constrained to the logo's measured palette, so the edit always targets real pixels instead
- * of a color Claude estimated by eye.
- */
-function editSchema(palette: string[]) {
-  const box = {
-    type: "object",
-    additionalProperties: false,
-    required: ["x1", "y1", "x2", "y2"],
-    properties: { x1: { type: "number" }, y1: { type: "number" }, x2: { type: "number" }, y2: { type: "number" } },
-  };
-  return {
-    type: "object",
-    additionalProperties: false,
-    required: ["edits", "erase", "background", "note"],
-    properties: {
-      edits: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["from", "to", "box"],
-          properties: {
-            from: { type: "string", enum: palette },
-            to: { type: "string", description: "New color as #RRGGBB" },
-            box: { anyOf: [{ type: "null" }, box] },
-          },
-        },
-      },
-      erase: { type: "array", items: box },
-      background: { type: "string", enum: ["remove", "keep", "unchanged"] },
-      note: { type: "string" },
-    },
-  };
-}
-
-function editPrompt(instruction: string, palette: { hex: string; share: number }[], bgRemoved: boolean): string {
-  const colors = palette.map((c) => `${c.hex} (${Math.round(c.share * 100)}%)`).join(", ");
-  return `You help edit a company logo. The user asked: "${instruction}"
-
-The image shows the logo as it looks now. Fully transparent areas are drawn as mid grey (#808080); they are not part of the logo.
-Measured logo colors (share of visible pixels): ${colors}
-Background removal is currently ${bgRemoved ? "ON" : "OFF"}.
-
-You cannot draw. You carry out the request with these tools only:
-- edits: each edit changes every pixel of color "from" inside "box" to color "to". "from" must be one of the measured colors. "box" limits the change to an area, in 0-1 coordinates of the image (x1, y1 = top-left, x2, y2 = bottom-right), or null for the whole logo. When the same color also appears in a part the user did not ask to change, use a box that covers the whole target with a small margin and leaves the other part out. Use several edits for several targets.
-- erase: areas to remove completely, such as a tagline, an icon or a stray mark. Each erase removes every shape that lies mostly inside its box and leaves background in its place, so the box only has to cover most of the part. Use erase for "remove ..." requests; never recolor a part to the background color to hide it.
-- background: "remove" if the user asks to remove or clear the background, "keep" if they want it back, otherwise "unchanged".
-- note: one short, friendly sentence to the user saying what you changed, or why you could not do it.
-
-If the request needs anything other than color changes, erasing parts or background removal (moving, resizing or redrawing shapes, adding text), return no edits and explain that in the note.`;
-}
 
 export async function POST(req: NextRequest) {
   if (rateLimited(clientIp(req.headers), "logo-edit")) {
@@ -76,7 +22,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") return NextResponse.json({ error: "Send the edit request as JSON" }, { status: 400 });
-    const { src, mime, instruction, palette, bgRemoved } = body;
+    const { src, mime, instruction, palette, bgRemoved, bgColor, transparent, fill } = body;
 
     if (typeof mime !== "string" || !ALLOWED_MIME.has(mime)) {
       return NextResponse.json({ error: "Unsupported image type" }, { status: 400 });
@@ -97,6 +43,7 @@ export async function POST(req: NextRequest) {
           .map((c) => ({ hex: c.hex.toUpperCase(), share: +c.share }))
       : [];
     if (!colors.length) return NextResponse.json({ error: "The logo has no visible colors" }, { status: 400 });
+    const ctx = promptContext({ bgRemoved, bgColor, transparent, fill }, colors.map((c) => c.hex));
 
     const res = await fetch(CLAUDE_URL, {
       method: "POST",
@@ -116,7 +63,7 @@ export async function POST(req: NextRequest) {
             role: "user",
             content: [
               { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
-              { type: "text", text: editPrompt(text, colors, bgRemoved === true) },
+              { type: "text", text: editPrompt(text, colors, ctx) },
             ],
           },
         ],
@@ -162,6 +109,7 @@ export async function POST(req: NextRequest) {
       edits,
       erase,
       background: ["remove", "keep"].includes(p.background) ? p.background : "unchanged",
+      fill: parseFill(p.fill),
       note: typeof p.note === "string" ? p.note.slice(0, 300) : "",
     });
   } catch (err: unknown) {

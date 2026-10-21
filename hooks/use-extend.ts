@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { ExtendQueueItem } from "@/lib/types";
 import { revokeSrc, LoadedImage } from "@/lib/image-utils";
 import { loadImageFiles } from "@/lib/load-images";
@@ -20,6 +20,9 @@ export function useExtend() {
   const [fillColor, setFillColor] = useState("#ffffff");
   // "Fit inside safe zone": only applies to storefront presets, which have a safe zone.
   const [fitSafe, setFitSafe] = useState(false);
+  // Memoized: ExtendPreview redraws when `safe` changes, and the provider re-renders on every
+  // tool's state change (Upscale progress included).
+  const safe = useMemo(() => (fitSafe ? safeZoneForRatio(ratio) : null), [fitSafe, ratio]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const current = queue[currentIdx] || null;
@@ -84,7 +87,7 @@ export function useExtend() {
     fillColor, setFillColor,
     fitSafe, setFitSafe,
     /** Safe zone the canvas must fit the image into, or null (fit off, or not a storefront preset) */
-    safe: fitSafe ? safeZoneForRatio(ratio) : null,
+    safe,
     isMulti,
     loadError, clearLoadError: () => setLoadError(null), reportLoadError: setLoadError,
     loadImage, loadWithRatio, navigateTo, reset,

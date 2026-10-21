@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { removeBg, recolorCanvas, hasTransparency, detectBackground } from "@/lib/logo-processing";
+import { removeBg, recolorCanvas, hasTransparency, detectBackground, fillTransparentPixels } from "@/lib/logo-processing";
 
 // The default canvas mock doesn't store pixel data. We patch getImageData/putImageData
 // on each canvas context so that pixel-level tests work correctly.
@@ -368,5 +368,20 @@ describe("removeBg: enclosed pale fill", () => {
     const i = (20 * 40 + 9) * 4;
     expect(d[i + 3]).toBeGreaterThan(0);
     expect(d[i + 3]).toBeLessThan(255);
+  });
+});
+
+describe("fillTransparentPixels", () => {
+  it("paints the fill behind transparent pixels, blends edges and leaves opaque pixels alone", () => {
+    const px = new Uint8ClampedArray([
+      10, 20, 30, 255, // opaque logo pixel
+      0, 0, 0, 0, // transparent background
+      255, 255, 255, 128, // half-transparent white edge
+    ]);
+    fillTransparentPixels(px, "#3A4630");
+    expect(Array.from(px.slice(0, 4))).toEqual([10, 20, 30, 255]);
+    expect(Array.from(px.slice(4, 8))).toEqual([0x3a, 0x46, 0x30, 255]);
+    // 128/255 white over #3A4630
+    expect(Array.from(px.slice(8, 12))).toEqual([157, 163, 152, 255]);
   });
 });

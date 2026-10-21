@@ -12,7 +12,7 @@ const hits = new Map<string, number[]>();
 export const RATE_LIMITS = {
   "detect-focal": 40, // Smart Crop batch analysis, under a cent each
   "logo-edit": 20, // Ask AI on the Logo page, under a cent each
-  "image-edit": 10, // AI Gateway fill / redraw, about $0.05 each
+  "image-edit": 10, // AI Gateway logo redraw, about $0.04 each
   scrape: 10, // fetch from a website: several outbound requests each
   "image-proxy": 300, // one scrape shows ~25 thumbnails through the proxy
 } as const;

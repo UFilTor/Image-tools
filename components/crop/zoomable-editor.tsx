@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback, ReactNode } from "react";
 import { CropRect, DisplaySize, CropDragType } from "@/lib/types";
 import { CropOverlay } from "./crop-overlay";
 import { safeZoneForRatio } from "@/lib/storefront";
+import { useSafeZoneVisible } from "@/hooks/use-safe-zone-visible";
 
 interface ZoomableEditorProps {
   src: string;
@@ -21,6 +22,7 @@ interface ZoomableEditorProps {
 export function ZoomableEditor({
   src, disp, crop, setCrop, ratio, onDown, zoom, setZoom, pan, setPan,
 }: ZoomableEditorProps) {
+  const [safeVisible] = useSafeZoneVisible();
   const containerRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{
     sx: number; sy: number; sp: { x: number; y: number };
@@ -80,7 +82,7 @@ export function ZoomableEditor({
         transformOrigin: "center center",
       }}>
         <img key={src} src={src} alt="" decoding="async" draggable={false} className="block pointer-events-none animate-fadeIn" style={{ width: disp.dw, height: disp.dh }} />
-        <CropOverlay crop={crop} onDown={onDown} safe={safeZoneForRatio(ratio)} />
+        <CropOverlay crop={crop} onDown={onDown} safe={safeVisible ? safeZoneForRatio(ratio) : null} />
       </div>
 
       {zoom > 1 && (

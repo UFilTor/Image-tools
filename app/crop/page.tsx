@@ -21,6 +21,7 @@ import { FromWebsite } from "@/components/ui/from-website";
 import { LoadError } from "@/components/ui/load-error";
 import { SendTo } from "@/components/ui/send-to";
 import { SizeWarning } from "@/components/ui/size-warning";
+import { SafeZoneToggle } from "@/components/crop/safe-zone-toggle";
 
 export default function CropPage() {
   const {
@@ -86,6 +87,7 @@ export default function CropPage() {
                 {currentIdx + 1} of {queue.length}
               </span>
             )}
+            <SafeZoneToggle ratio={ratio} />
             <SizeInput cropPx={cropPx} cropPy={cropPy} ratio={ratio} crop={crop} setCrop={setCrop} disp={disp} nat={nat} />
             <SizeWarning ratio={ratio} widthPx={cropPx} fileName={cropFilename(name)} getBlob={() => cropToBlob(src, nat, disp, crop)} />
           </div>

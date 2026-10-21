@@ -438,6 +438,19 @@ export function snapToPalette(rgb: RGB, palette: PaletteColor[], maxDist: number
   return best ? best.hex : rgbToHex(rgb);
 }
 
+/**
+ * The kept background color after color edits: a whole-logo edit from (about) the background
+ * color moves the background to its `to` color. Erases then paint the new color, and Ask AI's
+ * background hint names the color the background has now.
+ */
+export function currentBackground(bg: RGB | null, edits: LogoEdit[], maxDist: number): RGB | null {
+  let cur = bg;
+  for (const e of edits) {
+    if (cur && !isErase(e) && !e.box && distSq(cur, hexToRgb(e.from)) <= maxDist * maxDist) cur = hexToRgb(e.to);
+  }
+  return cur;
+}
+
 // ---- Canvas wrappers ----
 
 export interface EditContext {

@@ -191,6 +191,8 @@ export default function LogoPage() {
                 setRecolor={setRecolor}
                 customHex={customHex}
                 setCustomHex={setCustomHex}
+                bgFill={logo.bgFill}
+                setBgFill={logo.setBgFill}
               >
                 <ColorEdits
                   edits={edits}

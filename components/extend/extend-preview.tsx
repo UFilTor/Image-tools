@@ -5,6 +5,7 @@ import { NaturalSize } from "@/lib/types";
 import { extendGeometry, renderExtended, previewGeometry, extendSizeError, FillStyle } from "@/lib/extend-utils";
 import { safeZoneForRatio, type SafeZone } from "@/lib/storefront";
 import { SafeZoneBox } from "@/components/crop/safe-zone-box";
+import { useSafeZoneVisible } from "@/hooks/use-safe-zone-visible";
 
 interface ExtendPreviewProps {
   src: string;
@@ -34,8 +35,10 @@ export function ExtendPreview({ src, natural, ratio, padding, fillStyle, fillCol
   }, [src]);
 
   const sizeError = extendSizeError(extendGeometry(natural, ratio, padding, safe));
-  // Storefront presets show their safe zone whether or not the fit is on.
-  const zone = safeZoneForRatio(ratio);
+  // Storefront presets show their safe zone whether or not the fit is on, unless the Safe zone
+  // switch in the header is off.
+  const [safeVisible] = useSafeZoneVisible();
+  const zone = safeVisible ? safeZoneForRatio(ratio) : null;
 
   // Preview renders straight into the visible canvas at display size on every change;
   // full resolution is only rendered on download.
@@ -58,7 +61,7 @@ export function ExtendPreview({ src, natural, ratio, padding, fillStyle, fillCol
             className="block max-w-full max-h-[58vh] rounded-lg shadow-sm"
             style={{ objectFit: "contain" }}
           />
-          {zone && <SafeZoneBox zone={zone} />}
+          {zone && <SafeZoneBox zone={zone} className="rounded-lg" />}
         </div>
         {sizeError && (
           <p className="text-xs text-error font-medium text-center" role="alert">{sizeError}</p>

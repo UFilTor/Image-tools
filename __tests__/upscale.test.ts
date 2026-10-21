@@ -9,6 +9,8 @@ import { tooLargeForAnySize, sizeChangePlan,
   ENHANCE_THRESHOLD,
   MAX_OUTPUT_PIXELS,
   MAX_OUTPUT_SIDE,
+  startSettings,
+  ENLARGE_REQUEST,
 } from "@/lib/upscale";
 
 describe("pickMode", () => {
@@ -132,3 +134,21 @@ describe("tooLargeForAnySize", () => {
   });
 });
 
+
+describe("startSettings", () => {
+  it("uses the size-based mode and the session scale by default", () => {
+    expect(startSettings({ w: 400, h: 300 }, 4)).toEqual({ mode: "upscale", factor: 4 });
+    expect(startSettings({ w: 2400, h: 1500 }, 2)).toEqual({ mode: "enhance", factor: 2 });
+  });
+
+  it("starts the size warning's image at exactly 2x upscale, whatever was picked before", () => {
+    // A large crop would default to enhance, and the session scale is 4x
+    expect(startSettings({ w: 1200, h: 750 }, 4, ENLARGE_REQUEST)).toEqual({ mode: "upscale", factor: 2 });
+  });
+
+  it("keeps 2x because 4x of a crop just under the cover width passes the output cap", () => {
+    const crop = { w: 2255, h: 1409 }; // 16:10, 1px under the cover's minWidth
+    expect(upscaleSizeError(crop, 2)).toBeNull();
+    expect(upscaleSizeError(crop, 4)).not.toBeNull();
+  });
+});

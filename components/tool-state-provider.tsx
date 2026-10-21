@@ -9,6 +9,7 @@ import { useUpscale } from "@/hooks/use-upscale";
 import { useLogoProcessor } from "@/hooks/use-logo-processor";
 import { toFileList } from "@/lib/file-intake";
 import { CRISPER_INSTRUCTION } from "@/lib/logo-redraw";
+import { ENLARGE_REQUEST } from "@/lib/upscale";
 import type { ToolKey } from "@/lib/constants";
 
 interface ToolState {
@@ -56,7 +57,7 @@ export function ToolStateProvider({ children }: { children: ReactNode }) {
   const sendTo = async (to: ToolKey, file: File, { enlarge = false } = {}) => {
     targets[to].reset();
     const files = toFileList([file]);
-    await (to === "upscale" && enlarge ? upscale.loadAndUpscale(files, "upscale", 2) : targets[to].load(files));
+    await (to === "upscale" && enlarge ? upscale.loadAndUpscale(files, ENLARGE_REQUEST) : targets[to].load(files));
     router.push(`/${to}`);
   };
 

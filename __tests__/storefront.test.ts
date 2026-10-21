@@ -16,6 +16,13 @@ describe("storefront slots", () => {
     expect(STOREFRONT_SLOTS.experience.maxBox).toBeCloseTo(2.547, 3);
   });
 
+  it("asks for enough source width to stay sharp at each slot's largest size", () => {
+    // SizeWarning shows under these widths
+    expect(STOREFRONT_SLOTS.cover.minWidth).toBe(1128 * 2); // 1128px desktop cover box at 2x
+    expect(STOREFRONT_SLOTS.experience.minWidth).toBeGreaterThanOrEqual(797 * 2); // desktop main image at 2x
+    expect(STOREFRONT_SLOTS.experience.minWidth).toBeGreaterThanOrEqual(350 * 3 * (3 / 2)); // 350px phone carousel at 3x, 3:2 photo
+  });
+
   it("links the Experience and Cover presets to their slots, and nothing else", () => {
     expect(slotForRatio(preset("Experience"))).toBe(STOREFRONT_SLOTS.experience);
     expect(slotForRatio(preset("Cover image"))).toBe(STOREFRONT_SLOTS.cover);
