@@ -481,6 +481,42 @@ describe("image optimizer URLs (Next.js / Vercel)", () => {
   });
 });
 
+// sherlocked.se (WordPress + WebP Converter for Media), trimmed: every image, the logo included,
+// is served through one passthru script, so keyed by path they all collapsed and the logo's key
+// then excluded the photos too. Markup as fetched 2026-10-22.
+describe("WordPress WebP passthru (sherlocked.se)", () => {
+  const passthru = (file: string) =>
+    `https://sherlocked.se/wp-content/webpc-passthru.php?src=https://sherlocked.se/wp-content/uploads/2023/08/${file}&amp;nocache=1`;
+  const html = `<html><head>
+    <meta property="og:image" content="${passthru("svart-bakgrund-vit-logo.jpg")}">
+    </head><body>
+    <img id="image-149-12" alt="Sherlocked" src="https://sherlocked.se/wp-content/uploads/2023/08/sherlocked-logo.svg" class="ct-image">
+    <img id="image-353-27-1" alt="" src="${passthru("Baskerville-Poster.jpg")}" class="ct-image" srcset="${passthru("Baskerville-Poster.jpg")} 1200w, ${passthru("Baskerville-Poster-768x1024.jpg")} 768w">
+    <img id="image-353-27-2" alt="" src="${passthru("jack_2026_sherlocked-scaled.jpg")}" class="ct-image">
+    <img id="image-353-27-3" alt="" src="${passthru("moriartys-revenge_1-1.jpg")}" class="ct-image">
+    <img id="image-87-12" alt="" src="${passthru("logo_white.png")}" class="ct-image">
+    </body></html>`;
+  const photos = extractPhotos(parseHtml(html, "https://sherlocked.se/"));
+
+  it("unwraps the passthru to the original upload and keeps the served copy as the fallback", () => {
+    expect(unwrapOptimizer("https://sherlocked.se/wp-content/webpc-passthru.php?src=https://sherlocked.se/a.jpg&nocache=1", "https://sherlocked.se/")).toBe(
+      "https://sherlocked.se/a.jpg"
+    );
+    expect(photos[0]).toMatchObject({
+      url: "https://sherlocked.se/wp-content/uploads/2023/08/Baskerville-Poster.jpg",
+      fallbackUrl: "https://sherlocked.se/wp-content/webpc-passthru.php?src=https://sherlocked.se/wp-content/uploads/2023/08/Baskerville-Poster.jpg&nocache=1",
+    });
+  });
+
+  it("keeps every photo and drops only the logos", () => {
+    expect(photos.map((p) => p.url.split("/").pop())).toEqual([
+      "Baskerville-Poster.jpg",
+      "jack_2026_sherlocked-scaled.jpg",
+      "moriartys-revenge_1-1.jpg",
+    ]);
+  });
+});
+
 describe("experiencePagePhotos", () => {
   const gallery = `<meta property="og:image" content="https://media.understory.io/experience//cover/MAIN.false">
     <img src="https://media.understory.io/company/c1/cover/COVER.png">

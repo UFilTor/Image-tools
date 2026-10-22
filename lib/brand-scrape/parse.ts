@@ -148,14 +148,20 @@ export function resolveUrl(candidate: string | undefined, baseUrl: string): stri
 // Next.js and Vercel image optimizers serve every image from one path (/_next/image?url=…), so
 // keyed by path all of a site's photos collapsed into one (2026-10-21: an Understory experience
 // page showed 1 of its 4 photos). The original image is the real photo, and full size too.
-const OPTIMIZER_PATH_RE = /\/_(?:next|vercel)\/image\/?$/;
+// WordPress's WebP Converter for Media does the same through webpc-passthru.php?src=… (2026-10-22:
+// sherlocked.se served 50 photos and its logo that way, and the logo's key then dropped them all).
+const OPTIMIZERS: { path: RegExp; param: string }[] = [
+  { path: /\/_(?:next|vercel)\/image\/?$/, param: "url" },
+  { path: /\/webpc-passthru\.php$/, param: "src" },
+];
 
 export function unwrapOptimizer(url: string | undefined, baseUrl: string): string | undefined {
   if (!url || url.startsWith("data:")) return url;
   try {
     const parsed = new URL(url);
-    if (!OPTIMIZER_PATH_RE.test(parsed.pathname)) return url;
-    const inner = parsed.searchParams.get("url");
+    const optimizer = OPTIMIZERS.find((o) => o.path.test(parsed.pathname));
+    if (!optimizer) return url;
+    const inner = parsed.searchParams.get(optimizer.param);
     return (inner && resolveUrl(inner, baseUrl)) || url;
   } catch {
     return url;
