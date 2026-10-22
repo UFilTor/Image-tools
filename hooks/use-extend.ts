@@ -5,7 +5,7 @@ import { ExtendQueueItem } from "@/lib/types";
 import { revokeSrc, LoadedImage } from "@/lib/image-utils";
 import { loadImageFiles } from "@/lib/load-images";
 import { FillStyle } from "@/lib/extend-utils";
-import { EXPERIENCE_SET_MAX, SET_OVERFLOW_NOTE, safeZoneForRatio, withSetPresets } from "@/lib/storefront";
+import { assignRoles, safeZoneForRatio, splitSet, withSetPresets } from "@/lib/storefront";
 
 type ExtendStep = "upload" | "edit";
 
@@ -69,12 +69,13 @@ export function useExtend() {
 
   /** Full experience: the photos in page order become the main photo and the secondary photos. */
   const applySet = useCallback((list: ExtendQueueItem[]) => {
-    list.slice(EXPERIENCE_SET_MAX).forEach((it) => revokeSrc(it.src));
+    const { kept, dropped, note } = splitSet(list);
+    dropped.forEach((it) => revokeSrc(it.src));
     // The queue-wide ratio and label stay as they were (each photo shows its own role), so a
     // reset and a new load never inherit a "Full experience" label without presets.
-    setQueue(withSetPresets(list.slice(0, EXPERIENCE_SET_MAX)));
+    setQueue(withSetPresets(kept));
     setCurrentIdx(0);
-    setSetNote(list.length > EXPERIENCE_SET_MAX ? SET_OVERFLOW_NOTE : null);
+    setSetNote(note);
     setStep("edit");
   }, []);
 
@@ -97,7 +98,7 @@ export function useExtend() {
   /** Full experience: make the current photo the main one; roles follow the new order. */
   const makeMain = useCallback(() => {
     if (currentIdx <= 0) return;
-    setQueue((q) => withSetPresets([q[currentIdx], ...q.filter((_, i) => i !== currentIdx)]));
+    setQueue((q) => assignRoles([q[currentIdx], ...q.filter((_, i) => i !== currentIdx)]));
     setCurrentIdx(0);
   }, [currentIdx]);
 

@@ -11,8 +11,6 @@ interface ShortcutActions {
   onEscape?: () => void;
   onLeft?: () => void;
   onRight?: () => void;
-  /** When true, disables global 1-3 mode navigation (e.g., when RatioPicker is active) */
-  disableModeNav?: boolean;
 }
 
 export function useKeyboardShortcuts(actions: ShortcutActions = {}) {
@@ -32,7 +30,7 @@ export function useKeyboardShortcuts(actions: ShortcutActions = {}) {
       // An open overlay (help panel) owns Enter/Escape/arrows; mode switching still works.
       const overlayOpen = isOverlayOpen();
 
-      if (!a.disableModeNav && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         const num = parseInt(e.key, 10);
         if (num >= 1 && num <= SHORTCUT_MAP.modes.length) {
           e.preventDefault();

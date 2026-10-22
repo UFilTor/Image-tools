@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { STOREFRONT_SLOTS, safeZone, safeZoneForRatio, slotForRatio, safeRect, isSecondaryRatio, experienceSet, withSetPresets } from "@/lib/storefront";
+import { STOREFRONT_SLOTS, safeZone, safeZoneForRatio, slotForRatio, safeRect, isSecondaryRatio, experienceSet, withSetPresets, assignRoles, splitSet, SET_OVERFLOW_NOTE } from "@/lib/storefront";
 import { FETCH_KEY, RATIOS, SECONDARY_RATIOS, uploadCards } from "@/lib/constants";
 import { centeredOnBbox } from "@/lib/crop-math";
 import { extendGeometry } from "@/lib/extend-utils";
@@ -168,5 +168,25 @@ describe("withSetPresets", () => {
     const roles = (names: string[]) => withSetPresets(names.map((name) => ({ name }))).map((it) => `${it.name}:${it.preset.role}`);
     expect(roles(["a", "b", "c"])).toEqual(["a:main", "b:secondary", "c:secondary"]);
     expect(roles(["c", "a", "b"])).toEqual(["c:main", "a:secondary", "b:secondary"]);
+  });
+});
+
+describe("assignRoles", () => {
+  it("re-shapes only the photos whose shape changed, after a reorder", () => {
+    const set = withSetPresets([{ name: "a", crop: "a-crop" }, { name: "b", crop: "b-crop" }, { name: "c", crop: "c-crop" }]);
+    // c becomes main; a and b swap places but both stay secondary at the same shape
+    const reordered = assignRoles([set[2], set[0], set[1]], (it) => ({ ...it, crop: `${it.name} re-cropped` }));
+    expect(reordered.map((it) => `${it.name}:${it.preset.role}:${it.crop}`)).toEqual([
+      "c:main:c re-cropped",
+      "a:secondary:a re-cropped",
+      "b:secondary:b-crop",
+    ]);
+  });
+});
+
+describe("splitSet", () => {
+  it("keeps the 4 photos the page shows and returns the rest with the note", () => {
+    expect(splitSet([1, 2, 3, 4, 5, 6])).toEqual({ kept: [1, 2, 3, 4], dropped: [5, 6], note: SET_OVERFLOW_NOTE });
+    expect(splitSet([1, 2])).toEqual({ kept: [1, 2], dropped: [], note: null });
   });
 });

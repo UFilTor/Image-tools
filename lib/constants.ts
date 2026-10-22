@@ -17,6 +17,11 @@ export const FULL_EXPERIENCE = { label: "Full experience", sub: "Main + secondar
 
 export type UploadCard = { kind: "ratio"; ratio: Ratio } | { kind: "set" };
 
+/** A card's title and the line under it. */
+export function cardText(card: UploadCard): { label: string; sub: string } {
+  return card.kind === "set" ? FULL_EXPERIENCE : { label: card.ratio.label, sub: card.ratio.sub };
+}
+
 /**
  * Upload and ratio-picker cards in key order (1, 2, …): the ratios, with Full experience right
  * after Secondary photo where it's offered, so the experience page's cards sit together and Free

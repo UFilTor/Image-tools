@@ -5,26 +5,17 @@ import { CropRect, CropQueueItem } from "@/lib/types";
 import { editorDispSize, rescaleCrop, revokeSrc, LoadedImage } from "@/lib/image-utils";
 import { loadImageFiles } from "@/lib/load-images";
 import { centered } from "@/lib/crop-math";
-import { EXPERIENCE_SET_MAX, SET_OVERFLOW_NOTE, experienceSet, type SetPreset } from "@/lib/storefront";
+import { assignRoles, splitSet, type SetPreset } from "@/lib/storefront";
 import { useWindowResize } from "./use-window-resize";
 
 type CropStep = "upload" | "ratio" | "crop";
 
-/**
- * Full experience: the first image is the main photo, the rest secondary photos at the shape for
- * their count, each with its own `preset`. Only EXPERIENCE_SET_MAX fit the page's gallery; the
- * rest come back as `dropped` so the caller can release them. `imgs` must not be empty.
- */
-function buildSetQueue(imgs: LoadedImage[]): { items: CropQueueItem[]; first: SetPreset; dropped: LoadedImage[] } {
-  const kept = imgs.slice(0, EXPERIENCE_SET_MAX);
-  const presets = experienceSet(kept.length);
-  const items = kept.map((img, i): CropQueueItem => {
-    const d = editorDispSize(img.nat);
-    const preset = presets[i];
-    return { src: img.src, name: img.name, natural: img.nat, disp: d, crop: centered(d.dw, d.dh, preset.value), adjusted: false, preset };
-  });
-  return { items, first: presets[0], dropped: imgs.slice(EXPERIENCE_SET_MAX) };
-}
+/** A photo re-cropped, centered, at its Full experience shape. */
+const recropCentered = (it: CropQueueItem & { preset: SetPreset }) => ({
+  ...it,
+  crop: centered(it.disp.dw, it.disp.dh, it.preset.value),
+  adjusted: false,
+});
 
 export function useSingleCrop() {
   const [step, setStep] = useState<CropStep>("upload");
@@ -95,10 +86,12 @@ export function useSingleCrop() {
    * their count. Only EXPERIENCE_SET_MAX fit the page's gallery; the rest are released, with a note.
    */
   const enterSet = useCallback((imgs: LoadedImage[]) => {
-    const { items, first, dropped } = buildSetQueue(imgs);
+    const { kept, dropped, note } = splitSet(imgs);
     dropped.forEach((img) => revokeSrc(img.src));
-    enterCrop(items, first.value, first.label);
-    if (dropped.length) setSetNote(SET_OVERFLOW_NOTE);
+    const items = assignRoles(buildQueue(kept, null), recropCentered);
+    if (!items.length) return;
+    enterCrop(items, items[0].preset.value, items[0].preset.label);
+    setSetNote(note);
   }, []);
 
   const loadExperienceSet = useCallback(async (files: FileList) => {
@@ -115,13 +108,7 @@ export function useSingleCrop() {
   const makeMain = useCallback(() => {
     setQueue((prev) => {
       if (currentIdx <= 0 || currentIdx >= prev.length) return prev;
-      const order = [prev[currentIdx], ...prev.filter((_, i) => i !== currentIdx)];
-      const presets = experienceSet(order.length);
-      return order.map((it, i) => {
-        const preset = presets[i];
-        if (it.preset?.value === preset.value) return { ...it, preset };
-        return { ...it, preset, crop: centered(it.disp.dw, it.disp.dh, preset.value), adjusted: false };
-      });
+      return assignRoles([prev[currentIdx], ...prev.filter((_, i) => i !== currentIdx)], recropCentered);
     });
     setCurrentIdx(0);
   }, [currentIdx]);

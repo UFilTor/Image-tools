@@ -46,7 +46,6 @@ export default function SmartCropPage() {
   const resetConfirm = useConfirm({ onConfirm: reset, count: items.length, threshold: 1 });
 
   useKeyboardShortcuts({
-    disableModeNav: step === "ratio" || step === "recrop",
     onEnter: isEdit && editItem?.crop && editCrop && !dl.busy
       ? () => dl.run(() => dlCrop(editItem.src, editItem.natural, editItem.disp, editCrop, editFileName))
       : undefined,

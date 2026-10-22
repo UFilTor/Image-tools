@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { FULL_EXPERIENCE, uploadCards } from "@/lib/constants";
-import { isOverlayOpen } from "@/lib/overlay-state";
+import { useMemo } from "react";
+import { cardText, uploadCards, type UploadCard } from "@/lib/constants";
+import { useCardKeys } from "@/hooks/use-card-keys";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
 import { FillStyle } from "@/lib/extend-utils";
 import { isSecondaryRatio, safeZoneForRatio } from "@/lib/storefront";
@@ -43,20 +43,8 @@ export function ExtendControls({
 }: ExtendControlsProps) {
   const cards = useMemo(() => uploadCards(true), []);
   // Number keys pick a target ratio, in the same order as the upload screen's cards.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (isOverlayOpen()) return;
-      const card = cards[parseInt(e.key, 10) - 1];
-      if (!card) return;
-      e.preventDefault();
-      if (card.kind === "set") onPickSet();
-      else setRatio(card.ratio.value, card.ratio.label);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [setRatio, onPickSet, cards]);
+  const pickCard = (card: UploadCard) => (card.kind === "set" ? onPickSet() : setRatio(card.ratio.value, card.ratio.label));
+  useCardKeys(cards, pickCard);
 
   return (
     <div className="bg-surface border border-border rounded-2xl px-[22px] py-5 flex flex-col gap-[18px] w-full max-w-[420px]">
@@ -65,7 +53,7 @@ export function ExtendControls({
         <div className="text-[13px] font-semibold text-text mb-2.5">Target ratio</div>
         <div className="flex gap-2 flex-wrap">
           {cards.map((card, idx) => {
-            const r = card.kind === "set" ? { label: FULL_EXPERIENCE.label, sub: FULL_EXPERIENCE.sub } : card.ratio;
+            const r = cardText(card);
             const active =
               card.kind === "set"
                 ? isSet
@@ -74,7 +62,7 @@ export function ExtendControls({
               <button
                 key={r.label}
                 type="button"
-                onClick={() => (card.kind === "set" ? onPickSet() : setRatio(card.ratio.value, card.ratio.label))}
+                onClick={() => pickCard(card)}
                 className={`
                   inline-flex flex-col items-start px-[14px] py-2 rounded-button cursor-pointer
                   border-[1.5px] text-[13px] font-semibold transition-all duration-150

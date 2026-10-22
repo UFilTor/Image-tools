@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { FULL_EXPERIENCE, uploadCards } from "@/lib/constants";
+import { useMemo, useRef, useState } from "react";
+import { cardText, uploadCards, type UploadCard } from "@/lib/constants";
 import { prepareFiles, needsConversion } from "@/lib/file-intake";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
-import { isOverlayOpen } from "@/lib/overlay-state";
+import { useCardKeys } from "@/hooks/use-card-keys";
 
 interface RatioDropZonesProps {
   onDropWithRatio: (files: FileList, ratioValue: number | null, ratioLabel: string) => void;
@@ -12,25 +12,22 @@ interface RatioDropZonesProps {
   onDropSet?: (files: FileList) => void;
 }
 
-/** What a click or drop loads into: one ratio for every image, or an experience's photo set. */
-type Target = { value: number | null; label: string } | "set";
-
 export function RatioDropZones({ onDropWithRatio, onDropSet }: RatioDropZonesProps) {
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
-  const clickedRatioRef = useRef<Target | null>(null);
+  const clickedRatioRef = useRef<UploadCard | null>(null);
   const ratioInputRef = useRef<HTMLInputElement>(null);
 
-  const processFiles = async (files: FileList, target: Target) => {
+  const processFiles = async (files: FileList, card: UploadCard) => {
     setError(null);
     const converting = needsConversion(files);
     if (converting) setConverting(true);
     try {
       const { files: ready, error: err } = await prepareFiles(files);
       if (err) setError(err);
-      if (ready && target === "set") onDropSet?.(ready);
-      else if (ready && target !== "set") onDropWithRatio(ready, target.value, target.label);
+      if (ready && card.kind === "set") onDropSet?.(ready);
+      else if (ready && card.kind === "ratio") onDropWithRatio(ready, card.ratio.value, card.ratio.label);
     } finally {
       if (converting) setConverting(false);
     }
@@ -38,25 +35,13 @@ export function RatioDropZones({ onDropWithRatio, onDropSet }: RatioDropZonesPro
 
   const cards = useMemo(() => uploadCards(!!onDropSet), [onDropSet]);
 
-  const handleCardClick = (target: Target) => {
+  const handleCardClick = (card: UploadCard) => {
     if (converting) return;
-    clickedRatioRef.current = target;
+    clickedRatioRef.current = card;
     ratioInputRef.current?.click();
   };
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (isOverlayOpen()) return;
-      const card = cards[parseInt(e.key, 10) - 1];
-      if (!card) return;
-      e.preventDefault();
-      handleCardClick(card.kind === "set" ? "set" : { value: card.ratio.value, label: card.ratio.label });
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [converting, cards]);
+  useCardKeys(cards, handleCardClick);
 
   return (
     <div>
@@ -67,9 +52,7 @@ export function RatioDropZones({ onDropWithRatio, onDropSet }: RatioDropZonesPro
         {cards.map((card, idx) => {
           const isOver = overIdx === idx;
           const isSet = card.kind === "set";
-          const label = isSet ? FULL_EXPERIENCE.label : card.ratio.label;
-          const sub = isSet ? FULL_EXPERIENCE.sub : card.ratio.sub;
-          const target: Target = isSet ? "set" : { value: card.ratio.value, label };
+          const { label, sub } = cardText(card);
           return (
             <button
               type="button"
@@ -79,13 +62,13 @@ export function RatioDropZones({ onDropWithRatio, onDropSet }: RatioDropZonesPro
                   ? "Upload a full experience's photos in page order: the first becomes the main photo, the rest secondary photos"
                   : `Upload images at ${label} (${sub}) ratio`
               }
-              onClick={() => handleCardClick(target)}
+              onClick={() => handleCardClick(card)}
               onDragOver={(e) => { e.preventDefault(); setOverIdx(idx); }}
               onDragLeave={() => setOverIdx(null)}
               onDrop={(e) => {
                 e.preventDefault();
                 setOverIdx(null);
-                processFiles(e.dataTransfer.files, target);
+                processFiles(e.dataTransfer.files, card);
               }}
               disabled={converting}
               className={`

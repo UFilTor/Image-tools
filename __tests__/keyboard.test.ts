@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { isControlTarget } from "@/lib/keyboard";
+import { isControlTarget, isPlainShortcut } from "@/lib/keyboard";
+import { setOverlayOpen } from "@/lib/overlay-state";
 
 const el = (html: string) => {
   const host = document.createElement("div");
@@ -21,5 +22,28 @@ describe("isControlTarget", () => {
     expect(isControlTarget(el("<a>no href</a>"))).toBe(false);
     expect(isControlTarget(document.body)).toBe(false);
     expect(isControlTarget(null)).toBe(false);
+  });
+});
+
+describe("isPlainShortcut", () => {
+  const key = (init: KeyboardEventInit, target?: EventTarget) => {
+    const e = new KeyboardEvent("keydown", { key: "4", ...init });
+    if (target) Object.defineProperty(e, "target", { value: target });
+    return e;
+  };
+
+  it("skips Cmd and Ctrl, but lets Alt and Shift through (AltGr on Nordic layouts reports altKey)", () => {
+    expect(isPlainShortcut(key({}))).toBe(true);
+    expect(isPlainShortcut(key({ metaKey: true }))).toBe(false);
+    expect(isPlainShortcut(key({ ctrlKey: true }))).toBe(false);
+    expect(isPlainShortcut(key({ altKey: true }))).toBe(true);
+    expect(isPlainShortcut(key({ shiftKey: true }))).toBe(true);
+  });
+
+  it("skips typing in a field and keys while the help panel is open", () => {
+    expect(isPlainShortcut(key({}, document.createElement("input")))).toBe(false);
+    setOverlayOpen(true);
+    expect(isPlainShortcut(key({}))).toBe(false);
+    setOverlayOpen(false);
   });
 });

@@ -118,3 +118,20 @@ export function withSetPresets<T>(items: T[]): (T & { preset: SetPreset })[] {
   const presets = experienceSet(items.length);
   return items.map((it, i) => ({ ...it, preset: presets[i] }));
 }
+
+/**
+ * Full experience after a reorder: roles follow position (the first is the main photo). Items
+ * whose shape changed go through `reshape` (each tool re-crops its own way); the rest keep theirs.
+ */
+export function assignRoles<T extends { preset?: SetPreset }>(
+  list: T[],
+  reshape: (item: T & { preset: SetPreset }) => T & { preset: SetPreset } = (item) => item,
+): (T & { preset: SetPreset })[] {
+  return withSetPresets(list).map((it, i) => (list[i].preset?.value === it.preset.value ? it : reshape(it)));
+}
+
+/** The photos a Full experience keeps (the first EXPERIENCE_SET_MAX), the rest, and the note to show. */
+export function splitSet<T>(list: T[]): { kept: T[]; dropped: T[]; note: string | null } {
+  const dropped = list.slice(EXPERIENCE_SET_MAX);
+  return { kept: list.slice(0, EXPERIENCE_SET_MAX), dropped, note: dropped.length ? SET_OVERFLOW_NOTE : null };
+}

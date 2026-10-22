@@ -147,10 +147,32 @@ export async function dlExtended(
   }
 }
 
+/** One photo in Extend's Download all: its file name, the shape it's extended to, and its safe zone. */
+export interface ExtendDownloadEntry {
+  item: ExtendQueueItem;
+  name: string;
+  ratio: number | null;
+  safe: SafeZone | null;
+}
+
 /**
- * Every Extend result in one zip. Each photo is extended at its own shape in Full experience (the
- * batch `ratio` otherwise), and "Fit inside safe zone" uses that shape's safe zone.
+ * What Extend's Download all writes. Each photo is extended at its own shape in Full experience
+ * (the batch `ratio` otherwise), named in page order, and "Fit inside safe zone" uses that shape's
+ * safe zone. Pure, so it is tested without a canvas.
  */
+export function extendDownloadPlan(items: ExtendQueueItem[], ratio: number | null, fitSafe: boolean): ExtendDownloadEntry[] {
+  return items.map((item, i) => {
+    const r = item.preset ? item.preset.value : ratio;
+    return {
+      item,
+      name: orderedName(extendFilename(item.name), i, item.preset?.role),
+      ratio: r,
+      safe: fitSafe ? safeZoneForRatio(r) : null,
+    };
+  });
+}
+
+/** Every Extend result in one zip, as planned by extendDownloadPlan. */
 export function dlAllExtended(
   items: ExtendQueueItem[],
   ratio: number | null,
@@ -159,14 +181,11 @@ export function dlAllExtended(
   fitSafe = false,
 ): Promise<DownloadResult> {
   return zipAndDownload(
-    items.map((it, i) => {
-      const r = it.preset ? it.preset.value : ratio;
-      return {
-        name: orderedName(extendFilename(it.name), i, it.preset?.role),
-        // A size-limit throw skips that entry, like any other failed render.
-        blob: () => extendedBlob(it, r, padding, fill, fitSafe ? safeZoneForRatio(r) : null),
-      };
-    }),
+    extendDownloadPlan(items, ratio, fitSafe).map((p) => ({
+      name: p.name,
+      // A size-limit throw skips that entry, like any other failed render.
+      blob: () => extendedBlob(p.item, p.ratio, padding, fill, p.safe),
+    })),
     "extended.zip",
   );
 }

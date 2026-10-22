@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { prepareFiles } from "@/lib/file-intake";
 import type { ImageCandidate } from "@/lib/brand-scrape/types";
 import { FETCH_KEY, checkerBg } from "@/lib/constants";
-import { isOverlayOpen } from "@/lib/overlay-state";
+import { isPlainShortcut } from "@/lib/keyboard";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
 import { userMessage } from "@/lib/errors";
 
@@ -50,9 +50,7 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
   useEffect(() => {
     if (open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== FETCH_KEY || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (isOverlayOpen()) return;
+      if (e.key !== FETCH_KEY || !isPlainShortcut(e)) return;
       e.preventDefault();
       setOpen(true);
     };

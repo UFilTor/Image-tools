@@ -48,7 +48,6 @@ export default function CropPage() {
       : step === "ratio" ? resetConfirm.fire : undefined,
     onLeft: isMulti && step === "crop" ? () => navigateTo(currentIdx - 1) : undefined,
     onRight: isMulti && step === "crop" ? () => navigateTo(currentIdx + 1) : undefined,
-    disableModeNav: step === "ratio",
   });
 
   return (

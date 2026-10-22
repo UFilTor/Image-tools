@@ -5,7 +5,7 @@ import { MultiCropItem, CropRect } from "@/lib/types";
 import { editorDispSize, rescaleCrop, revokeSrc, LoadedImage } from "@/lib/image-utils";
 import { loadImageFiles } from "@/lib/load-images";
 import { centeredOnBbox } from "@/lib/crop-math";
-import { EXPERIENCE_SET_MAX, SET_OVERFLOW_NOTE, safeZoneForRatio, withSetPresets } from "@/lib/storefront";
+import { assignRoles, safeZoneForRatio, splitSet, withSetPresets } from "@/lib/storefront";
 import { FULL_EXPERIENCE } from "@/lib/constants";
 import { detectFocalWithFallback } from "@/lib/ai-client";
 import { useWindowResize } from "./use-window-resize";
@@ -27,10 +27,7 @@ const subjectCrop = (it: MultiCropItem, r: number | null, focal = it.focal) =>
  * whose shape changed are re-cropped around their subject.
  */
 const reassignRoles = (list: MultiCropItem[]): MultiCropItem[] =>
-  withSetPresets(list).map((it, i) => {
-    if (list[i].preset?.value === it.preset.value) return it;
-    return { ...it, ratio: it.preset.value, crop: it.crop || it.focal ? subjectCrop(it, it.preset.value) : null };
-  });
+  assignRoles(list, (it) => ({ ...it, ratio: it.preset.value, crop: it.crop || it.focal ? subjectCrop(it, it.preset.value) : null }));
 
 export function useMultiCrop() {
   const [step, setStep] = useState<MultiStep>("upload");
@@ -108,8 +105,8 @@ export function useMultiCrop() {
    * cropped at its own shape. Photos already analyzed are re-cropped at once; the rest are analyzed.
    */
   const applySet = useCallback((list: MultiCropItem[]) => {
-    const kept = list.slice(0, EXPERIENCE_SET_MAX);
-    list.slice(EXPERIENCE_SET_MAX).forEach((it) => revokeSrc(it.src));
+    const { kept, dropped, note } = splitSet(list);
+    dropped.forEach((it) => revokeSrc(it.src));
     const updated = withSetPresets(kept).map((it): MultiCropItem => {
       const r = it.preset.value;
       return it.focal?.bbox && !it.focal.error
@@ -119,7 +116,7 @@ export function useMultiCrop() {
     setItems(updated);
     setRatio(updated[0]?.preset?.value ?? null);
     setRatioLabel(FULL_EXPERIENCE.label);
-    setSetNote(list.length > EXPERIENCE_SET_MAX ? SET_OVERFLOW_NOTE : null);
+    setSetNote(note);
     setStep("review");
     if (updated.some((it) => it.status === "analyzing")) runAnalysis(updated, null);
   }, [runAnalysis]);

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
-import { FULL_EXPERIENCE, RATIOS, STORAGE_KEYS, uploadCards } from "@/lib/constants";
+import { RATIOS, STORAGE_KEYS, cardText, uploadCards, type UploadCard } from "@/lib/constants";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
 import { isOverlayOpen } from "@/lib/overlay-state";
+import { useCardKeys } from "@/hooks/use-card-keys";
 
 interface RatioPickerProps {
   onPick: (value: number | null, label: string) => void;
@@ -45,16 +46,14 @@ export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back
     onPick(value, label);
   }, [onPick]);
 
+  const pickCard = (card: UploadCard) => (card.kind === "set" ? onPickSet?.() : handlePick(card.ratio.value, card.ratio.label));
+  useCardKeys(cards, pickCard);
+
+  // Enter picks the last used ratio, Escape goes back.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (isOverlayOpen()) return;
-      const card = cards[parseInt(e.key, 10) - 1];
-      if (card) {
-        e.preventDefault();
-        if (card.kind === "set") onPickSet?.();
-        else handlePick(card.ratio.value, card.ratio.label);
-      }
       if (e.key === "Enter") {
         e.preventDefault();
         const ratio = RATIOS.find((r) => r.label === highlighted);
@@ -67,7 +66,7 @@ export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handlePick, onBack, highlighted, onPickSet, cards]);
+  }, [handlePick, onBack, highlighted]);
 
   return (
     <div className="text-center animate-fadeUp">
@@ -85,14 +84,13 @@ export function RatioPicker({ onPick, onBack, subtitle, backLabel = "← Go back
       <div className="grid grid-cols-2 gap-2.5 max-w-[320px] mx-auto">
         {cards.map((card, idx) => {
           const isSet = card.kind === "set";
-          const label = isSet ? FULL_EXPERIENCE.label : card.ratio.label;
-          const sub = isSet ? FULL_EXPERIENCE.sub : card.ratio.sub;
+          const { label, sub } = cardText(card);
           const key = isSet ? SET_KEY : label;
           const active = hov === key || (!isSet && label === highlighted);
           return (
             <button
               key={key}
-              onClick={() => (card.kind === "set" ? onPickSet?.() : handlePick(card.ratio.value, card.ratio.label))}
+              onClick={() => pickCard(card)}
               onMouseEnter={() => setHov(key)}
               onMouseLeave={() => setHov(null)}
               className={`
