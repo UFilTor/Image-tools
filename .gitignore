@@ -45,3 +45,6 @@ next-env.d.ts
 /.playwright-cli/
 /qa-reports/
 
+
+# Local Claude Code session files (dev-server launch config, per-machine permissions)
+.claude/
