@@ -26,7 +26,7 @@ export function SizeWarning({ ratio, widthPx, fileName, getBlob }: SizeWarningPr
       <span className="text-xs text-text-secondary font-medium tabular-nums">
         {widthPx}px wide. Sharp screens need {slot.minWidth}px.
       </span>
-      <Button size="sm" onClick={() => send("upscale", { enlarge: true })} disabled={busy !== null}>
+      <Button size="sm" onClick={() => send("upscale", { enlargeTo: slot.minWidth })} disabled={busy !== null}>
         {busy ? "Opening…" : "Upscale it →"}
       </Button>
       {error && <span className="text-xs text-error font-medium" role="alert">{error}</span>}

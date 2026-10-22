@@ -9,7 +9,7 @@ import {
   extractPhotos,
   pageAsExperience,
   parseHtml,
-  unwrapOptimizer,
+  photoSource,
 } from "./parse";
 
 // Reads one website and returns logo and photo candidates. Experiences (title,
@@ -42,7 +42,10 @@ export async function scrapeWebsite(url: string): Promise<ScrapeResult> {
     for (const photo of list) {
       const key = photo.url.split("?")[0];
       const existing = photos.get(key);
-      if (!existing || existing.score < photo.score) photos.set(key, photo);
+      const fallbackUrl = photo.fallbackUrl ?? existing?.fallbackUrl;
+      if (!existing || existing.score < photo.score) photos.set(key, fallbackUrl ? { ...photo, fallbackUrl } : photo);
+      // A lower-scored copy of the same photo can still bring the optimized URL the kept one lacks.
+      else if (!existing.fallbackUrl && fallbackUrl) photos.set(key, { ...existing, fallbackUrl });
     }
   };
   addPhotos(extractPhotos(page));
@@ -71,10 +74,12 @@ export async function scrapeWebsite(url: string): Promise<ScrapeResult> {
 
   // Experience photos are worth offering as photos too.
   for (const exp of experiences) {
-    const imageUrl = unwrapOptimizer(exp.imageUrl, main.url);
-    if (imageUrl && !photos.has(imageUrl.split("?")[0])) {
-      photos.set(imageUrl.split("?")[0], { url: imageUrl, alt: exp.title, score: 70 });
-    }
+    const source = photoSource(exp.imageUrl, main.url);
+    if (!source) continue;
+    const key = source.url.split("?")[0];
+    const existing = photos.get(key);
+    if (!existing) photos.set(key, { ...source, alt: exp.title, score: 70 });
+    else if (!existing.fallbackUrl && source.fallbackUrl) photos.set(key, { ...existing, fallbackUrl: source.fallbackUrl });
   }
 
   return {

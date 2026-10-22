@@ -26,7 +26,8 @@ function revokeResults(items: UpscaleItem[]) {
 export function useUpscale() {
   const [step, setStep] = useState<UpscaleStep>("upload");
   const [items, setItems] = useState<UpscaleItem[]>([]);
-  const [scale, setScale] = useState<UpscaleFactor>(2);
+  // 4x by default: the usual job is a small photo that has to fill a storefront slot.
+  const [scale, setScale] = useState<UpscaleFactor>(4);
   const [modelLoading, setModelLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -110,7 +111,7 @@ export function useUpscale() {
     void pump();
   }, [pump]);
 
-  /** `request` overrides the size-based mode and the session scale (`ENLARGE_REQUEST` from the size warning). */
+  /** `request` overrides the size-based mode and the session scale (`enlargeRequest` from the size warning). */
   const loadAndUpscale = useCallback(async (files: FileList, request?: StartRequest) => {
     setLoadError(null);
     const { images, error } = await loadImageFiles(files);

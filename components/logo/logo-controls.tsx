@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import { LOGO_RECOLOR_PRESETS } from "@/lib/constants";
 import { HEX_RE } from "@/lib/logo-edits";
+import { canFillBackground } from "@/lib/logo-processing";
 import type { BgMode } from "@/hooks/use-logo-processor";
 
 const BG_MODES: { key: BgMode; label: string }[] = [
@@ -35,7 +36,7 @@ export function LogoControls({
 }: LogoControlsProps) {
   // A fill only shows behind transparent areas; on an opaque logo the background is just a color
   // in Changes.
-  const canFill = isTransparent || bgMode !== "off";
+  const canFill = canFillBackground(isTransparent, bgMode !== "off");
 
   return (
     <div className="bg-surface border border-border rounded-2xl px-[22px] py-5 flex flex-col gap-[18px]">

@@ -200,6 +200,15 @@ export function removeBg(
 }
 
 /**
+ * A background fill only shows behind transparent areas: a logo that is transparent already, or one
+ * whose background is removed. With an opaque logo and removal Off it would be saved but invisible,
+ * so the Logo tool clears it then.
+ */
+export function canFillBackground(isTransparent: boolean, bgRemoved: boolean): boolean {
+  return isTransparent || bgRemoved;
+}
+
+/**
  * Background fill: paint `hexColor` behind every transparent or partly transparent pixel, so the
  * result is opaque. Anti-aliased edges blend into the fill, so no fringe of the old background shows.
  */

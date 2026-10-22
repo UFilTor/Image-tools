@@ -113,14 +113,14 @@ export function checkerBg(size = 16): string {
 }
 
 /**
- * The tools, in tab order (matches SHORTCUT_MAP.modes). `hint` is the short line under the tab
- * name; `about` is the tab tooltip and the start page description. A first-time user test showed
+ * The tools, in tab order (matches SHORTCUT_MAP.modes). `about` is the tab tooltip and the start
+ * page description. A first-time user test showed
  * "Smart Crop", "Extend" and "Upscale" don't explain themselves.
  */
 export const TOOLS = [
-  { href: "/crop", label: "Crop", num: "1", hint: "Fixed sizes", about: "Crop photos to booking page sizes" },
-  { href: "/smart-crop", label: "Smart Crop", num: "2", hint: "AI finds the subject", about: "Crop a batch of photos; AI keeps people in frame" },
-  { href: "/extend", label: "Extend", num: "3", hint: "Add space around", about: "Add space around a photo to fit a size" },
-  { href: "/upscale", label: "Upscale", num: "4", hint: "Sharper or bigger", about: "Make photos sharper, and small ones bigger" },
-  { href: "/logo", label: "Logo", num: "5", hint: "Background, colors", about: "Remove a logo's background, change colors or erase parts" },
+  { href: "/crop", label: "Crop", num: "1", about: "Crop photos to booking page sizes" },
+  { href: "/smart-crop", label: "Smart Crop", num: "2", about: "Crop a batch of photos; AI keeps people in frame" },
+  { href: "/extend", label: "Extend", num: "3", about: "Add space around a photo to fit a size" },
+  { href: "/upscale", label: "Upscale", num: "4", about: "Make photos sharper, and small ones bigger" },
+  { href: "/logo", label: "Logo", num: "5", about: "Remove a logo's background, change colors or erase parts" },
 ] as const;

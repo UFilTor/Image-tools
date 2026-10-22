@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { BoundingBox, NaturalSize } from "@/lib/types";
-import { removeBg, recolorCanvas, fillCanvas, detectBackground } from "@/lib/logo-processing";
+import { removeBg, recolorCanvas, fillCanvas, detectBackground, canFillBackground } from "@/lib/logo-processing";
 import {
   LogoEdit, NewLogoEdit, HEX_RE, PaletteColor, applyEdits, canvasPalette, contrastingHex, currentBackground, isErase, sampleColor,
   snapBoxOnCanvas, snapToPalette,
@@ -252,7 +252,12 @@ export function useLogoProcessor() {
     void checkGatewayAvailable().then((available) => setRedraw((r) => ({ ...r, available })));
   }, [update, dropCandidate]);
 
-  const setBgMode = useCallback((bgMode: BgMode) => update({ bgMode }), [update]);
+  // Turning removal Off on an opaque logo leaves nothing for the fill to show behind: clear it, so
+  // it doesn't come back unseen when removal is switched on again.
+  const setBgMode = useCallback(
+    (bgMode: BgMode) => update(canFillBackground(isTransparent, bgMode !== "off") ? { bgMode } : { bgMode, bgFill: null }),
+    [update, isTransparent],
+  );
   const setRecolor = useCallback((recolor: string) => update({ recolor }), [update]);
   const setBgFill = useCallback((bgFill: string | null) => update({ bgFill }), [update]);
   const setCustomHex = useCallback((customHex: string) => {
@@ -372,6 +377,10 @@ export function useLogoProcessor() {
       const patch: Partial<LogoSettings> = {};
       if (bgMode !== cur.bgMode) patch.bgMode = bgMode;
       if (res.fill !== null) patch.bgFill = res.fill === "none" ? null : res.fill;
+      // Same rule as setBgMode: no fill where it can't show.
+      if (!canFillBackground(isTransparent, (patch.bgMode ?? cur.bgMode) !== "off") && (patch.bgFill ?? cur.bgFill)) {
+        patch.bgFill = null;
+      }
       if (Object.keys(patch).length) update(patch);
       // Claude's boxes are rough; grow each one to whole shapes of its color so letters aren't cut.
       const snapped = res.edits.map((e) => (e.box ? { ...e, box: snapBoxOnCanvas(cv, e.from, e.box, BG_TOLERANCE) } : e));

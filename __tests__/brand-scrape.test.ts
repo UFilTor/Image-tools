@@ -12,6 +12,7 @@ import {
   pageAsExperience,
   parseHtml,
   experiencePagePhotos,
+  photoSource,
   unwrapOptimizer,
 } from "@/lib/brand-scrape/parse";
 import { assertPublicHttpUrl, isPrivateAddress, withProtocol } from "@/lib/brand-scrape/fetch";
@@ -283,8 +284,9 @@ describe("image optimizer URLs (Next.js / Vercel)", () => {
   it("keeps every photo a site serves through the optimizer, instead of collapsing them into one", () => {
     const html = `<img src="/_vercel/image?w=3840&q=75&url=https%3A%2F%2Fcdn.example.com%2Fa.jpg">
       <img src="/_vercel/image?w=3840&q=75&url=https%3A%2F%2Fcdn.example.com%2Fb.jpg">`;
-    const urls = extractPhotos(parseHtml(html, base)).map((p) => p.url);
-    expect(urls).toEqual(["https://cdn.example.com/a.jpg", "https://cdn.example.com/b.jpg"]);
+    const photos = extractPhotos(parseHtml(html, base));
+    expect(photos.map((p) => p.url)).toEqual(["https://cdn.example.com/a.jpg", "https://cdn.example.com/b.jpg"]);
+    expect(photos[0].fallbackUrl).toBe("https://shop.example.com/_vercel/image?w=3840&q=75&url=https%3A%2F%2Fcdn.example.com%2Fa.jpg");
   });
 });
 
@@ -297,10 +299,22 @@ describe("experiencePagePhotos", () => {
 
   it("lists an experience page's own photos in page order, main photo first, once each", () => {
     const urls = experiencePagePhotos(parseHtml(gallery, "https://nos.understory.io/experience/87601ae3"));
-    expect(urls.map((u) => u.split("/").pop())).toEqual(["MAIN.false", "SECOND.false", "THIRD.false"]);
+    expect(urls.map((u) => u.url.split("/").pop())).toEqual(["MAIN.false", "SECOND.false", "THIRD.false"]);
+    // The gallery's optimized copy is kept for when an original is too big to fetch
+    expect(urls[1].fallbackUrl).toBe("https://nos.understory.io/_vercel/image?w=640&url=https%3A%2F%2Fmedia.understory.io%2Fexperience%2F%2Fcover%2FSECOND.false");
   });
 
   it("is empty on pages that aren't experience pages", () => {
     expect(experiencePagePhotos(parseHtml(gallery, "https://nos.understory.io/en"))).toEqual([]);
+  });
+});
+
+describe("photoSource", () => {
+  it("keeps the optimized copy only when the page served one", () => {
+    expect(photoSource("/_next/image?url=%2Fa.jpg&w=640", "https://x.com/")).toEqual({
+      url: "https://x.com/a.jpg",
+      fallbackUrl: "https://x.com/_next/image?url=%2Fa.jpg&w=640",
+    });
+    expect(photoSource("/a.jpg", "https://x.com/")).toEqual({ url: "https://x.com/a.jpg" });
   });
 });

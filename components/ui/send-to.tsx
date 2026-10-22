@@ -26,7 +26,7 @@ export function useSendImage(fileName: string, getBlob: () => Promise<Blob | nul
   const [busy, setBusy] = useState<ToolKey | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const send = async (to: ToolKey, opts?: { enlarge?: boolean }) => {
+  const send = async (to: ToolKey, opts?: { enlargeTo?: number }) => {
     setBusy(to);
     setError(null);
     try {

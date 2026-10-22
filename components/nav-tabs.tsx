@@ -13,7 +13,7 @@ export function NavTabs() {
 
   return (
     <div className="flex bg-surface rounded-xl border-[1.5px] border-border p-[3px] gap-0.5">
-      {TOOLS.map(({ href, label, num, hint, about }) => {
+      {TOOLS.map(({ href, label, num, about }) => {
         const active = pathname === href;
         const shortcut = modKey ? `${modKey}${num}` : null;
         return (
@@ -29,10 +29,7 @@ export function NavTabs() {
                 : "bg-transparent text-text-muted hover:text-primary"}
             `}
           >
-            <span className="flex flex-col items-start leading-tight">
-              <span>{label}</span>
-              <span className="hidden md:block text-[10px] font-medium tracking-normal">{hint}</span>
-            </span>
+            <span>{label}</span>
             {!active && shortcut && (
               <span className="hidden sm:inline-flex">
                 <KeyboardHint shortcut={shortcut} />

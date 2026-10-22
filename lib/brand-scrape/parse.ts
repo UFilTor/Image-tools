@@ -1,4 +1,4 @@
-import type { ExperienceCandidate, ImageCandidate } from "./types";
+import type { ExperienceCandidate, ImageCandidate, PhotoSource } from "./types";
 
 // Pure HTML scanning for the client-brand scraper. No DOM and no HTML parser
 // dependency: every extractor works on regex tag scans, which is enough for
@@ -111,6 +111,14 @@ export function unwrapOptimizer(url: string | undefined, baseUrl: string): strin
   } catch {
     return url;
   }
+}
+
+/** A found image's original, with the optimized copy it was served as kept for a fallback. */
+export function photoSource(raw: string | undefined, baseUrl: string): PhotoSource | undefined {
+  const served = resolveUrl(raw, baseUrl);
+  const url = unwrapOptimizer(served, baseUrl);
+  if (!url) return undefined;
+  return served && served !== url ? { url, fallbackUrl: served } : { url };
 }
 
 /** What JSON.parse can return. Image Tools copy: replaces the kit's `unknown` + casts. */
@@ -326,12 +334,14 @@ export function extractLogos(page: PageData): ImageCandidate[] {
 export function extractPhotos(page: PageData, baseScore = 0): ImageCandidate[] {
   const found = new Map<string, ImageCandidate>();
   const add = (url: string | undefined, score: number, alt?: string) => {
-    const resolved = unwrapOptimizer(resolveUrl(url, page.url), page.url);
-    if (!resolved || resolved.startsWith("data:")) return;
-    if (NON_PHOTO_RE.test(resolved)) return;
-    const key = resolved.split("?")[0];
+    const source = photoSource(url, page.url);
+    if (!source || source.url.startsWith("data:")) return;
+    if (NON_PHOTO_RE.test(source.url)) return;
+    const key = source.url.split("?")[0];
     const existing = found.get(key);
-    if (!existing || existing.score < score) found.set(key, { url: resolved, alt, score });
+    const fallbackUrl = source.fallbackUrl ?? existing?.fallbackUrl;
+    if (!existing || existing.score < score) found.set(key, { ...source, alt, score, ...(fallbackUrl ? { fallbackUrl } : {}) });
+    else if (!existing.fallbackUrl && fallbackUrl) existing.fallbackUrl = fallbackUrl;
   };
 
   add(page.ogImage, 100 + baseScore);
@@ -367,7 +377,7 @@ const UNDERSTORY_EXPERIENCE_PHOTO_RE = /^https:\/\/media\.understory\.io\/experi
  * experience page shows experience photos (checked 2026-10-21); og:image only fills in when the
  * gallery markup has none.
  */
-export function experiencePagePhotos(page: PageData): string[] {
+export function experiencePagePhotos(page: PageData): PhotoSource[] {
   let path = "";
   try {
     path = new URL(page.url).pathname;
@@ -375,15 +385,15 @@ export function experiencePagePhotos(page: PageData): string[] {
     return [];
   }
   if (!/\/experience\/[^/]+/.test(path)) return [];
-  const out: string[] = [];
+  const out: PhotoSource[] = [];
   const seen = new Set<string>();
   for (const raw of [...page.imgs.map((img) => imageSource(img.attrs)), page.ogImage]) {
-    const url = unwrapOptimizer(resolveUrl(raw, page.url), page.url);
-    if (!url || !UNDERSTORY_EXPERIENCE_PHOTO_RE.test(url)) continue;
-    const key = url.split("?")[0];
+    const source = photoSource(raw, page.url);
+    if (!source || !UNDERSTORY_EXPERIENCE_PHOTO_RE.test(source.url)) continue;
+    const key = source.url.split("?")[0];
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(url);
+    out.push(source);
   }
   return out;
 }

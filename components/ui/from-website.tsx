@@ -3,7 +3,8 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { prepareFiles } from "@/lib/file-intake";
-import type { ImageCandidate } from "@/lib/brand-scrape/types";
+import type { ImageCandidate, PhotoSource } from "@/lib/brand-scrape/types";
+import { fetchPhoto, proxiedImage } from "@/lib/website-image";
 import { FETCH_KEY, checkerBg } from "@/lib/constants";
 import { isPlainShortcut } from "@/lib/keyboard";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
@@ -23,8 +24,6 @@ interface FromWebsiteProps {
 
 const MAX_SHOWN = { logo: 8, photo: 24 } as const;
 
-/** Scraped images load through the same-origin proxy (the browser can't read cross-origin pixels). */
-const proxied = (url: string) => `/api/image?url=${encodeURIComponent(url)}`;
 
 function fileNameFor(url: string, index: number, type: string): string {
   let base = "";
@@ -60,8 +59,10 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState<"scrape" | "load" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [found, setFound] = useState<{ site: string; items: ImageCandidate[]; experience: string[] } | null>(null);
+  const [found, setFound] = useState<{ site: string; items: ImageCandidate[]; experience: PhotoSource[] } | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
+  /** Originals whose thumbnail failed (too big for the proxy, say): those show the optimized copy. */
+  const [broken, setBroken] = useState<ReadonlySet<string>>(new Set());
   const noun = kind === "logo" ? "logo" : "photo";
 
   const scrape = async (e: FormEvent) => {
@@ -71,6 +72,7 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
     setError(null);
     setFound(null);
     setPicked([]);
+    setBroken(new Set());
     try {
       const res = await fetch("/api/scrape", {
         method: "POST",
@@ -86,7 +88,9 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
       if (!items.length) throw new Error(`No ${noun}s found on that website.`);
       const site = typeof data?.siteName === "string" && data.siteName ? data.siteName : new URL(data.url).hostname;
       const expList: unknown = data?.experiencePhotos;
-      const experience = (Array.isArray(expList) ? expList : []).filter((u): u is string => typeof u === "string");
+      const experience = (Array.isArray(expList) ? expList : [])
+        .filter((p): p is PhotoSource => typeof p?.url === "string")
+        .map((p) => (typeof p.fallbackUrl === "string" ? { url: p.url, fallbackUrl: p.fallbackUrl } : { url: p.url }));
       setFound({ site, items, experience });
     } catch (err) {
       setError(userMessage(err));
@@ -98,18 +102,16 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
   const toggle = (u: string) =>
     setPicked((p) => (multiple ? (p.includes(u) ? p.filter((x) => x !== u) : [...p, u]) : p[0] === u ? [] : [u]));
 
-  /** Download `urls` through the proxy, in order, and hand them to `deliver`. */
-  const loadUrls = async (urls: string[], deliver: (files: FileList) => void) => {
-    if (!urls.length || busy) return;
+  /** Download `sources` through the proxy (optimized copy if an original fails), in order, and hand them to `deliver`. */
+  const loadSources = async (sources: PhotoSource[], deliver: (files: FileList) => void) => {
+    if (!sources.length || busy) return;
     setBusy("load");
     setError(null);
     try {
       const files = await Promise.all(
-        urls.map(async (u, i) => {
-          const res = await fetch(proxied(u));
-          if (!res.ok) throw new Error("Couldn't download one of the images. Try another one.");
-          const blob = await res.blob();
-          return new File([blob], fileNameFor(u, i, blob.type), { type: blob.type });
+        sources.map(async (source, i) => {
+          const blob = await fetchPhoto(source);
+          return new File([blob], fileNameFor(source.url, i, blob.type), { type: blob.type });
         }),
       );
       const { files: ready, error: intakeError } = await prepareFiles(files);
@@ -221,7 +223,8 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- proxied third-party images, not optimizable */}
                     <img
-                      src={proxied(c.url)}
+                      src={proxiedImage(broken.has(c.url) && c.fallbackUrl ? c.fallbackUrl : c.url)}
+                      onError={() => c.fallbackUrl && !broken.has(c.url) && setBroken((b) => new Set(b).add(c.url))}
                       alt=""
                       loading="lazy"
                       className={`max-w-full max-h-full ${kind === "photo" ? "w-full h-full object-cover rounded-lg" : "object-contain"}`}
@@ -244,11 +247,11 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
               : multiple ? `Pick one or more ${noun}s` : `Pick a ${noun}`}
           </span>
           {onExperience && found.experience.length > 0 && (
-            <Button type="button" onClick={() => loadUrls(found.experience, onExperience)} disabled={!!busy}>
+            <Button type="button" onClick={() => loadSources(found.experience, onExperience)} disabled={!!busy}>
               Use full experience ({found.experience.length})
             </Button>
           )}
-          <Button type="button" variant="primary" onClick={() => loadUrls(picked, onFiles)} disabled={!picked.length || !!busy}>
+          <Button type="button" variant="primary" onClick={() => loadSources(picked.map((u) => found.items.find((c) => c.url === u) ?? { url: u }), onFiles)} disabled={!picked.length || !!busy}>
             {busy === "load"
               ? "Loading…"
               : picked.length > 1

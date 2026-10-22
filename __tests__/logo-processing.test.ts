@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { removeBg, recolorCanvas, hasTransparency, detectBackground, fillTransparentPixels } from "@/lib/logo-processing";
+import { removeBg, recolorCanvas, hasTransparency, detectBackground, fillTransparentPixels, canFillBackground } from "@/lib/logo-processing";
 
 // The default canvas mock doesn't store pixel data. We patch getImageData/putImageData
 // on each canvas context so that pixel-level tests work correctly.
@@ -383,5 +383,13 @@ describe("fillTransparentPixels", () => {
     expect(Array.from(px.slice(4, 8))).toEqual([0x3a, 0x46, 0x30, 255]);
     // 128/255 white over #3A4630
     expect(Array.from(px.slice(8, 12))).toEqual([157, 163, 152, 255]);
+  });
+});
+
+describe("canFillBackground", () => {
+  it("allows a fill only where there is something transparent to paint behind", () => {
+    expect(canFillBackground(true, false)).toBe(true); // a transparent logo
+    expect(canFillBackground(false, true)).toBe(true); // background removed
+    expect(canFillBackground(false, false)).toBe(false); // opaque, removal Off: the fill is cleared
   });
 });

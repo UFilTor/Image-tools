@@ -9,7 +9,7 @@ import { useUpscale } from "@/hooks/use-upscale";
 import { useLogoProcessor } from "@/hooks/use-logo-processor";
 import { toFileList } from "@/lib/file-intake";
 import { CRISPER_INSTRUCTION } from "@/lib/logo-redraw";
-import { ENLARGE_REQUEST } from "@/lib/upscale";
+import { enlargeRequest } from "@/lib/upscale";
 import type { ToolKey } from "@/lib/constants";
 
 interface ToolState {
@@ -20,9 +20,9 @@ interface ToolState {
   logo: ReturnType<typeof useLogoProcessor>;
   /**
    * Open another tool with `file` loaded, replacing what that tool held ("Send to").
-   * `enlarge` starts Upscale at 2x even for sources it would only enhance (size warning).
+   * `enlargeTo` (the size warning) starts Upscale enlarging toward that width, at 2x or 4x, even for sources it would only enhance.
    */
-  sendTo: (to: ToolKey, file: File, opts?: { enlarge?: boolean }) => Promise<void>;
+  sendTo: (to: ToolKey, file: File, opts?: { enlargeTo?: number }) => Promise<void>;
   /** Send to Logo and start Redraw for a crisper copy (Upscale's hint for logos). */
   redrawInLogo: (file: File) => Promise<void>;
 }
@@ -54,10 +54,10 @@ export function ToolStateProvider({ children }: { children: ReactNode }) {
     logo: { reset: logo.reset, load: logo.loadLogo },
   };
 
-  const sendTo = async (to: ToolKey, file: File, { enlarge = false } = {}) => {
+  const sendTo = async (to: ToolKey, file: File, { enlargeTo }: { enlargeTo?: number } = {}) => {
     targets[to].reset();
     const files = toFileList([file]);
-    await (to === "upscale" && enlarge ? upscale.loadAndUpscale(files, ENLARGE_REQUEST) : targets[to].load(files));
+    await (to === "upscale" && enlargeTo ? upscale.loadAndUpscale(files, enlargeRequest(enlargeTo)) : targets[to].load(files));
     router.push(`/${to}`);
   };
 

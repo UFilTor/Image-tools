@@ -54,13 +54,22 @@ export function pickMode(natural: NaturalSize): ProcessMode {
 export interface StartRequest {
   mode?: ProcessMode;
   factor?: UpscaleFactor;
+  /** Enlarge until the image is at least this wide, as far as the output cap allows (see enlargeFactor) */
+  targetWidth?: number;
 }
 
 /**
- * "Upscale it" from the storefront size warning: always enlarge, and at 2x whatever scale was
- * picked last, since 4x of a large crop can pass the output cap.
+ * The size warning's factor: 2x when that reaches `targetWidth`, else 4x, unless 4x would pass the
+ * output cap; then 2x, the most this image can get. Whatever scale was picked last doesn't count.
  */
-export const ENLARGE_REQUEST: StartRequest = { mode: "upscale", factor: 2 };
+export function enlargeFactor(natural: NaturalSize, targetWidth: number): UpscaleFactor {
+  return natural.w * 2 >= targetWidth || upscaleSizeError(natural, 4) ? 2 : 4;
+}
+
+/** "Upscale it" from the storefront size warning: always enlarge, toward the slot's sharp width. */
+export function enlargeRequest(targetWidth: number): StartRequest {
+  return { mode: "upscale", targetWidth };
+}
 
 /** Mode and factor a newly loaded image starts with: the request's, else the size-based default and the session scale. */
 export function startSettings(
@@ -68,7 +77,8 @@ export function startSettings(
   scale: UpscaleFactor,
   request?: StartRequest,
 ): { mode: ProcessMode; factor: UpscaleFactor } {
-  return { mode: request?.mode ?? pickMode(natural), factor: request?.factor ?? scale };
+  const factor = request?.targetWidth ? enlargeFactor(natural, request.targetWidth) : (request?.factor ?? scale);
+  return { mode: request?.mode ?? pickMode(natural), factor };
 }
 
 /**

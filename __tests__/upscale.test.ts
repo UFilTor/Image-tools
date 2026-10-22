@@ -10,7 +10,8 @@ import { tooLargeForAnySize, sizeChangePlan,
   MAX_OUTPUT_PIXELS,
   MAX_OUTPUT_SIDE,
   startSettings,
-  ENLARGE_REQUEST,
+  enlargeRequest,
+  enlargeFactor,
 } from "@/lib/upscale";
 
 describe("pickMode", () => {
@@ -141,14 +142,28 @@ describe("startSettings", () => {
     expect(startSettings({ w: 2400, h: 1500 }, 2)).toEqual({ mode: "enhance", factor: 2 });
   });
 
-  it("starts the size warning's image at exactly 2x upscale, whatever was picked before", () => {
-    // A large crop would default to enhance, and the session scale is 4x
-    expect(startSettings({ w: 1200, h: 750 }, 4, ENLARGE_REQUEST)).toEqual({ mode: "upscale", factor: 2 });
+  it("starts the size warning's image enlarging, whatever mode and scale it would default to", () => {
+    // A large crop would default to enhance, and the session scale is 4x: 2x already reaches 2256
+    expect(startSettings({ w: 1200, h: 750 }, 4, enlargeRequest(2256))).toEqual({ mode: "upscale", factor: 2 });
+    // 2x would stop at 2000, so 4x
+    expect(startSettings({ w: 1000, h: 625 }, 2, enlargeRequest(2256))).toEqual({ mode: "upscale", factor: 4 });
+  });
+});
+
+describe("enlargeFactor", () => {
+  it("uses 2x when 2x reaches the sharp width", () => {
+    expect(enlargeFactor({ w: 1128, h: 705 }, 2256)).toBe(2);
+    expect(enlargeFactor({ w: 2255, h: 1409 }, 2256)).toBe(2);
   });
 
-  it("keeps 2x because 4x of a crop just under the cover width passes the output cap", () => {
-    const crop = { w: 2255, h: 1409 }; // 16:10, 1px under the cover's minWidth
-    expect(upscaleSizeError(crop, 2)).toBeNull();
-    expect(upscaleSizeError(crop, 4)).not.toBeNull();
+  it("uses 4x when 2x falls short, even if 4x still does", () => {
+    expect(enlargeFactor({ w: 1127, h: 704 }, 2256)).toBe(4);
+    expect(enlargeFactor({ w: 400, h: 250 }, 2256)).toBe(4);
+  });
+
+  it("stays at 2x when 4x would pass the output cap", () => {
+    const tall = { w: 1000, h: 3000 }; // 4x is 12000px tall, over the 10000px cap
+    expect(upscaleSizeError(tall, 4)).not.toBeNull();
+    expect(enlargeFactor(tall, 2256)).toBe(2);
   });
 });
