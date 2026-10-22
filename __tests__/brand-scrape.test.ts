@@ -7,15 +7,18 @@ import {
   extractLogos,
   extractPhotos,
   extractPrice,
+  backgroundSource,
   imageSource,
   isoDuration,
+  looksLikePhoto,
+  photoKey,
   pageAsExperience,
   parseHtml,
   experiencePagePhotos,
   photoSource,
   unwrapOptimizer,
 } from "@/lib/brand-scrape/parse";
-import { assertPublicHttpUrl, isPrivateAddress, withProtocol } from "@/lib/brand-scrape/fetch";
+import { assertPublicHttpUrl, decodeBody, isPrivateAddress, withProtocol } from "@/lib/brand-scrape/fetch";
 
 // A small but realistic experience-operator home page: builder-style markup
 // with lazy images, a brand variable in CSS, JSON-LD for one product and
@@ -117,6 +120,194 @@ describe("extractPhotos", () => {
 
   it("skips logos, icons, pixels and placeholders", () => {
     expect(urls.some((u) => /logo|arrow|pixel|blank/.test(u))).toBe(false);
+  });
+});
+
+// truestory.no experience page, trimmed to what matters (fetched 2026-10-22): the only <img>
+// tags are the site logo, and the gallery is a carousel whose cells carry the photo as an
+// inline background-image (the first two) or a lazy-load data-bg attribute (the rest).
+const TRUESTORY = `<!doctype html>
+<html><head>
+<title>Whiskysmaking hos Underbar</title>
+<meta property="og:image" content="https://static.truestory.com/media/1184/12-whiskysmaking-hos-underbar.jpeg?height=630&width=1200&mode=crop&format=jpg">
+</head><body>
+<img class="brand-link__logo brand-logo" src="//cdn.truestory.com/assets/icons/2.0.8/logo/brand-primary/name-right/by-line-no.svg" alt="TrueStory logo" width="147" height="30">
+<div class="main-slider"><div class="carousel loading">
+  <div class="carousel-cell" style="background-image: url('https://static.truestory.com/media/1180/8-whiskysmaking-hos-underbar.jpeg?width=702&mode=crop&format=jpg')"></div>
+  <div class="carousel-cell" style="background-image: url('https://static.truestory.com/media/1176/4-whiskysmaking-hos-underbar.jpeg?width=702&mode=crop&format=jpg')"></div>
+  <div class="carousel-cell lazyload" style="background-image: url('data:image/gif;base64,R0lGODlhAwADALMJABwOCA==')" data-bg="https://static.truestory.com/media/1177/5-whiskysmaking-hos-underbar.jpeg?width=702&mode=crop&format=jpg"></div>
+  <div class="carousel-cell lazyload" style="background-image: url('data:image/gif;base64,R0lGODlhAwADALMJABwOCA==')" data-bg="https://static.truestory.com/media/1184/12-whiskysmaking-hos-underbar.jpeg?width=702&mode=crop&format=jpg"></div>
+</div></div>
+<div class="icon" style="background-image:url(/assets/icons/arrow-right.png)"></div>
+<div class="shine" style="background-image:linear-gradient(90deg,#fff0 0,#fff 60%)"></div>
+</body></html>`;
+
+describe("extractPhotos on CSS-background galleries", () => {
+  const photos = extractPhotos(parseHtml(TRUESTORY, "https://truestory.no/opplev/whiskysmaking-hos-underbar/"));
+  const urls = photos.map((p) => p.url);
+
+  it("finds the carousel photos shown as inline background-image and lazy data-bg", () => {
+    expect(urls).toEqual([
+      "https://static.truestory.com/media/1184/12-whiskysmaking-hos-underbar.jpeg?height=630&width=1200&mode=crop&format=jpg",
+      "https://static.truestory.com/media/1180/8-whiskysmaking-hos-underbar.jpeg?width=702&mode=crop&format=jpg",
+      "https://static.truestory.com/media/1176/4-whiskysmaking-hos-underbar.jpeg?width=702&mode=crop&format=jpg",
+      "https://static.truestory.com/media/1177/5-whiskysmaking-hos-underbar.jpeg?width=702&mode=crop&format=jpg",
+    ]);
+  });
+
+  it("skips the logo, icon backgrounds, gradients and the lazy-load placeholder", () => {
+    expect(urls.some((u) => /logo|arrow|data:|gradient/.test(u))).toBe(false);
+  });
+});
+
+describe("photos that are not photos (kit v3 grading: danskarby.com, coppersmiths.se, skyclimber.it, houlls.uk)", () => {
+  const html = (body: string, head = "") =>
+    parseHtml(
+      `<html><head><meta property="og:site_name" content="Padlegleden">${head}</head><body>${body}</body></html>`,
+      "https://example.no/"
+    );
+
+  it("does not offer the og:image as a photo when it is the header logo", () => {
+    const p = html(
+      `<header><a href="/"><img src="/images/padlegleden-hvit.png" alt="Padlegleden logo" width="200" height="60"></a></header>
+       <img src="/images/kajakk.jpg" alt="Kajakk" width="1200" height="800">`,
+      `<meta property="og:image" content="/images/padlegleden-hvit.png">`
+    );
+    expect(extractPhotos(p).map((c) => c.url)).toEqual(["https://example.no/images/kajakk.jpg"]);
+  });
+
+  it("reads a Wix path-encoded size as the declared size and skips blur placeholders", () => {
+    const p = html(
+      `<img src="https://static.wixstatic.com/media/abc123_def~mv2.jpg/v1/fill/w_49,h_22,blur_2/photo.jpg" width="980" height="440" alt="">
+       <img src="https://static.wixstatic.com/media/abc123_def~mv2.jpg/v1/fill/w_980,h_440,al_c/photo.jpg" width="980" height="440" alt="Butik">
+       <img src="https://static.wixstatic.com/media/abc123_def~mv2.jpg/v1/fill/w_640,h_300,al_c/photo.jpg" width="640" height="300" alt="Butik">`
+    );
+    const photos = extractPhotos(p);
+    expect(photos).toHaveLength(1);
+    expect(photos[0].url).toContain("w_980");
+  });
+
+  it("skips svg fragments, video thumbnails and builder shape art", () => {
+    const p = html(
+      `<img src="/fonts/entypo-fontello.svg#entypo" width="400" height="400" alt="">
+       <img src="https://i.ytimg.com/vi/abc/maxresdefault.jpg" width="1280" height="720" alt="Video">
+       <img src="/wp-content/plugins/kubio/lib/shapes/wave.png" width="1200" height="200" alt="">
+       <img src="/images/heste.jpg" width="1200" height="800" alt="Heste">`
+    );
+    expect(extractPhotos(p).map((c) => c.url)).toEqual(["https://example.no/images/heste.jpg"]);
+  });
+
+  it("keys the same Squarespace or Wix media at two crops as one photo", () => {
+    expect(photoKey("https://static.wixstatic.com/media/abc_def~mv2.jpg/v1/fill/w_980,h_440/a.jpg")).toBe(
+      photoKey("https://static.wixstatic.com/media/abc_def~mv2.jpg/v1/fill/w_640,h_300/a.jpg")
+    );
+    expect(photoKey("https://images.squarespace-cdn.com/content/v1/site/1234-abcd/photo.jpg?format=1500w")).toBe(
+      photoKey("https://images.squarespace-cdn.com/content/v1/site/1234-abcd/photo.jpg?format=750w")
+    );
+    expect(photoKey("https://example.dk/a.jpg")).not.toBe(photoKey("https://example.dk/b.jpg"));
+    // A stray % in a Squarespace file name must not throw.
+    expect(photoKey("https://images.squarespace-cdn.com/content/v1/site/1234/photo%zz.jpg")).toBe("sqs:photo%zz.jpg");
+    // flamsbana.no: the same file on two Squarespace hosts
+    expect(photoKey("https://images.squarespace-cdn.com/content/v1/6643/30ad-bc3b/Flamsbana+2014_edit3-web.png?format=1500w")).toBe(
+      photoKey("http://static1.squarespace.com/static/6643/t/6660/1717575222225/Flamsbana+2014_edit3-web.png?format=1500w")
+    );
+  });
+
+  it("keeps the photos of a site whose host name contains a logo word", () => {
+    expect(looksLikePhoto("https://brandywine-tours.com/img/vineyard.jpg")).toBe(true);
+    expect(looksLikePhoto("https://brandywine-tours.com/img/brand-logo.png")).toBe(false);
+    const p = parseHtml(
+      `<html><head><meta property="og:image" content="https://brandywine-tours.com/img/hero.jpg"></head><body></body></html>`,
+      "https://brandywine-tours.com/"
+    );
+    expect(extractPhotos(p).map((c) => c.url)).toEqual(["https://brandywine-tours.com/img/hero.jpg"]);
+  });
+
+  it("tells a photo from a badge", () => {
+    expect(looksLikePhoto("https://example.dk/img/beach.jpg")).toBe(true);
+    expect(looksLikePhoto("https://example.dk/img/tripadvisor-badge.png")).toBe(false);
+    expect(looksLikePhoto("https://example.dk/img/beach.jpg", "Our logo")).toBe(false);
+    expect(looksLikePhoto("data:image/png;base64,AA==")).toBe(false);
+  });
+
+  it("drops an og:image that is only the site root", () => {
+    const p = html(`<img src="/images/kajakk.jpg" width="1200" height="800" alt="Kajakk">`, `<meta property="og:image" content="">`);
+    expect(p.ogImage).toBeUndefined();
+  });
+});
+
+describe("srcset parsing", () => {
+  it("picks the largest entry when the image CDN uses commas in its query", () => {
+    const srcset =
+      "https://ik.example.io/x/sunset.jpg?tr=w-640,q=75 640w, https://ik.example.io/x/sunset.jpg?tr=w-1920,q=75 1920w, https://ik.example.io/x/sunset.jpg?tr=w-1080,q=75 1080w";
+    expect(imageSource({ srcset, src: "https://ik.example.io/x/sunset.jpg?tr=w-640,q=75" })).toBe(
+      "https://ik.example.io/x/sunset.jpg?tr=w-1920,q=75"
+    );
+  });
+
+  it("treats a density descriptor and a bare URL as small entries", () => {
+    expect(imageSource({ srcset: "/a.jpg 1x, /a@2x.jpg 2x" })).toBe("/a@2x.jpg");
+    expect(imageSource({ srcset: "/only.jpg" })).toBe("/only.jpg");
+  });
+});
+
+describe("pictures and preloads", () => {
+  const html = `<html><head>
+    <link rel="preload" as="image" href="/img/hero-market.jpg">
+    <link rel="preload" as="script" href="/app.js">
+    </head><body>
+    <picture>
+      <source type="image/webp" srcset="/img/kayak-800.webp 800w, /img/kayak-1600.webp 1600w">
+      <img src="/img/kayak-800.jpg" alt="Kayak at sunset">
+    </picture>
+    <video><source src="/video/intro.mp4" type="video/mp4"></video>
+    </body></html>`;
+  const photos = extractPhotos(parseHtml(html, "https://www.kayak.example/")).map((p) => p.url);
+
+  it("reads the largest <source> of a <picture> and leaves video sources alone", () => {
+    expect(photos).toContain("https://www.kayak.example/img/kayak-1600.webp");
+    expect(photos.some((u) => u.endsWith(".mp4"))).toBe(false);
+  });
+
+  it("ranks a preloaded hero image at the top", () => {
+    expect(photos[0]).toBe("https://www.kayak.example/img/hero-market.jpg");
+  });
+});
+
+describe("decodeBody", () => {
+  const latin1 = Uint8Array.from([0x4b, 0xf8, 0x62, 0x65, 0x6e, 0x68, 0x61, 0x76, 0x6e]); // "København" in ISO-8859-1
+
+  it("honours the charset in the content-type header", () => {
+    expect(decodeBody(latin1, "text/html; charset=ISO-8859-1")).toBe("København");
+  });
+
+  it("falls back to a meta charset when the header has none", () => {
+    const head = new TextEncoder().encode('<html><head><meta charset="windows-1252"><title>');
+    expect(decodeBody(new Uint8Array([...head, ...latin1]), "text/html")).toContain("København");
+  });
+
+  it("defaults to UTF-8", () => {
+    expect(decodeBody(new TextEncoder().encode("Fjällräven"), "text/html")).toBe("Fjällräven");
+  });
+});
+
+describe("backgroundSource", () => {
+  it("prefers data-bg over the placeholder in style", () => {
+    expect(backgroundSource({ style: "background-image: url('data:image/gif;base64,AA==')", "data-bg": "/real.jpg" })).toBe("/real.jpg");
+  });
+
+  it("ignores data-background colours and keywords, and unwraps a url() value", () => {
+    expect(backgroundSource({ "data-background": "#1a1a1a" })).toBeUndefined();
+    expect(backgroundSource({ "data-background": "dark" })).toBeUndefined();
+    expect(backgroundSource({ "data-background": "rgba(0,0,0,.5)" })).toBeUndefined();
+    expect(backgroundSource({ "data-bg": "url('/img/hero.jpg')" })).toBe("/img/hero.jpg");
+    expect(backgroundSource({ "data-background": "https://cdn.example.com/a.jpg" })).toBe("https://cdn.example.com/a.jpg");
+  });
+
+  it("reads url() from background and background-image, quoted or not", () => {
+    expect(backgroundSource({ style: "color: red; background: #fff url(/a.jpg) no-repeat" })).toBe("/a.jpg");
+    expect(backgroundSource({ style: 'background-image:url("/b.jpg")' })).toBe("/b.jpg");
+    expect(backgroundSource({ style: "background-image:linear-gradient(#fff,#000)" })).toBeUndefined();
   });
 });
 

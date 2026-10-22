@@ -26,6 +26,12 @@ export interface PageData {
   metas: Tag[];
   links: Tag[];
   imgs: Tag[];
+  /** <source srcset> inside <picture>; video sources carry src only and are left out. */
+  sources: Tag[];
+  /** <link rel="preload" as="image">: the hero a site preloads is the one it considers its best. */
+  preloadImages: string[];
+  /** Tags that show a photo as a CSS background (inline style or a lazy-load data-bg attribute). */
+  backgrounds: Tag[];
   anchors: Tag[];
   headings: { level: number; text: string; index: number; end: number }[];
   jsonLd: JsonValue[];
@@ -81,6 +87,49 @@ function scanTags(html: string, names: string[]): Tag[] {
     });
   }
   return tags;
+}
+
+// Carousels and hero sections often show photos as CSS backgrounds instead of <img>: an inline
+// style with url(...) or, lazy-loaded, a data-bg attribute (truestory.no had 15 gallery photos
+// that way and not one <img>). Only tags whose attributes mention one of those are parsed.
+function scanBackgroundTags(html: string): Tag[] {
+  const re = /<([a-z][a-z0-9-]*)\b([^<>]*?(?:background|data-bg)[^<>]*)>/gi;
+  const tags: Tag[] = [];
+  for (const match of html.matchAll(re)) {
+    const attrs = parseAttrs(match[2]);
+    if (backgroundSource(attrs)) tags.push({ name: match[1].toLowerCase(), attrs, index: match.index ?? 0 });
+  }
+  return tags;
+}
+
+const STYLE_URL_RE = /background(?:-image)?\s*:[^;]*?url\(\s*(['"]?)([^'")]+)\1\s*\)/i;
+
+// Themes also use data-background for a colour or a keyword ("#1a1a1a", "dark"), and some write
+// the lazy value as url(...): only a value that reads as a path or address is an image.
+function lazyImageValue(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const value = (raw.match(/^\s*url\(\s*(['"]?)(.*?)\1\s*\)\s*$/i)?.[2] ?? raw).trim();
+  if (!value || /^(#|rgba?\(|hsla?\(|var\(|transparent$|none$)/i.test(value)) return undefined;
+  return /[/.]/.test(value) ? value : undefined;
+}
+
+/** The photo a tag shows as a CSS background: the lazy-load attribute beats the placeholder in style. */
+export function backgroundSource(attrs: Record<string, string>): string | undefined {
+  const lazy = lazyImageValue(attrs["data-bg"] ?? attrs["data-background"] ?? attrs["data-background-image"]);
+  if (lazy) return lazy;
+  return attrs.style ? STYLE_URL_RE.exec(attrs.style)?.[2] : undefined;
+}
+
+// An og:image that resolves to the site root (an empty content attribute, say) is no image.
+export function plausibleImageUrl(candidate: string | undefined): string | undefined {
+  if (!candidate || candidate.startsWith("data:")) return undefined;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.pathname === "/" && !parsed.search) return undefined;
+  } catch {
+    return undefined;
+  }
+  return candidate;
 }
 
 export function resolveUrl(candidate: string | undefined, baseUrl: string): string | undefined {
@@ -201,6 +250,12 @@ export function parseHtml(rawHtml: string, url: string): PageData {
   const metas = scanTags(stripped, ["meta"]);
   const links = scanTags(stripped, ["link"]);
   const imgs = scanTags(stripped, ["img"]);
+  const sources = scanTags(stripped, ["source"]).filter((t) => t.attrs.srcset);
+  const backgrounds = scanBackgroundTags(stripped);
+  const preloadImages = links
+    .filter((t) => /preload/i.test(t.attrs.rel ?? "") && (t.attrs.as ?? "").toLowerCase() === "image")
+    .map((t) => (t.attrs.imagesrcset ? imageSource({ srcset: t.attrs.imagesrcset }) : t.attrs.href))
+    .filter((u): u is string => Boolean(u));
   const anchors = scanTags(stripped, ["a"]);
 
   const meta = (key: string) =>
@@ -242,10 +297,13 @@ export function parseHtml(rawHtml: string, url: string): PageData {
     title: titleText !== undefined ? stripTags(titleText) : undefined,
     siteName: meta("og:site_name") ?? meta("application-name"),
     description: meta("og:description") ?? meta("description"),
-    ogImage: resolveUrl(meta("og:image") ?? meta("twitter:image"), url),
+    ogImage: plausibleImageUrl(resolveUrl(meta("og:image") ?? meta("twitter:image"), url)),
     metas,
     links,
     imgs,
+    sources,
+    preloadImages,
+    backgrounds,
     anchors,
     headings,
     jsonLd,
@@ -261,12 +319,7 @@ export function parseHtml(rawHtml: string, url: string): PageData {
 export function imageSource(attrs: Record<string, string>): string | undefined {
   const srcset = attrs["data-srcset"] ?? attrs.srcset;
   if (srcset) {
-    const best = srcset
-      .split(",")
-      .map((entry) => entry.trim().split(/\s+/))
-      .map(([u, size]) => ({ u, w: size ? parseFloat(size) : 0 }))
-      .filter((e) => e.u)
-      .sort((a, b) => b.w - a.w)[0];
+    const best = parseSrcset(srcset).sort((a, b) => b.w - a.w)[0];
     if (best) return best.u;
   }
   return (
@@ -278,17 +331,96 @@ export function imageSource(attrs: Record<string, string>): string | undefined {
   );
 }
 
+// Image CDNs put commas inside the URL (imagekit's "tr=w-640,q=75"), so a split on "," breaks
+// entries apart: each entry is a URL up to whitespace, then its descriptor up to the next comma.
+function parseSrcset(srcset: string): { u: string; w: number }[] {
+  const out: { u: string; w: number }[] = [];
+  let rest = srcset.trim();
+  while (rest) {
+    const urlMatch = rest.match(/^\S+/);
+    if (!urlMatch) break;
+    let u = urlMatch[0];
+    rest = rest.slice(u.length);
+    const trailing = u.match(/,+$/);
+    if (trailing) {
+      u = u.slice(0, -trailing[0].length);
+      if (u) out.push({ u, w: 0 });
+      rest = rest.trimStart();
+      continue;
+    }
+    const descMatch = rest.match(/^([^,]*)(?:,|$)/);
+    const desc = (descMatch?.[1] ?? "").trim();
+    rest = rest.slice(descMatch?.[0].length ?? 0).trimStart();
+    const size = desc.match(/^([\d.]+)[wx]$/);
+    out.push({ u, w: size ? parseFloat(size[1]) : 0 });
+  }
+  return out;
+}
+
 // TODO(simplification): substring heuristic for what counts as a photo. Ceiling: it also drops
 // real photos whose URL happens to contain a word like "google" (googleusercontent-hosted
 // images) or "flag". Upgrade path: judge by the image's size and aspect after loading.
 const NON_PHOTO_RE =
-  /(logo|icon|sprite|pixel|tracking|badge|flag|avatar|payment|visa|mastercard|paypal|klarna|tripadvisor|trustpilot|google|facebook|instagram|arrow|spacer|blank|placeholder|loading|1x1|\.svg(\?|$)|\.gif(\?|$)|gravatar|emoji|captcha|maps\.g|cookie)/i;
+  /(logo|icon|sprite|pixel|tracking|badge|flag|avatar|payment|visa|mastercard|paypal|klarna|tripadvisor|trustpilot|google|facebook|instagram|arrow|spacer|blank|placeholder|loading|1x1|\.svg([?#]|$)|\.gif([?#]|$)|gravatar|emoji|captcha|maps\.g|cookie|ytimg|youtube|vimeocdn|\/shapes\/|header-shapes)/i;
 
 const LOGO_RE = /logo|brand|wordmark|site-title|sitename/i;
 
 function dimension(value: string | undefined): number {
   const n = parseFloat(value ?? "");
   return Number.isFinite(n) ? n : 0;
+}
+
+// Wix writes the rendered size into the path (/v1/fill/w_980,h_440,...) and serves a blurred
+// 49px stand-in first (blur_2): both say "not a photo" without a width attribute to read.
+function urlDeclaredTiny(url: string): boolean {
+  if (/[/,]blur_\d/i.test(url)) return true;
+  const size = url.match(/\/w_(\d+),h_(\d+)/i);
+  return size ? Number(size[1]) < 200 || Number(size[2]) < 120 : false;
+}
+
+function urlDeclaredWidth(url: string): number {
+  const size = url.match(/\/w_(\d+),h_(\d+)/i);
+  return size ? Number(size[1]) : 0;
+}
+
+// Declared tiny images are icons even when the name does not say so.
+function isTinyImage(attrs: Record<string, string>): boolean {
+  const w = dimension(attrs.width);
+  const h = dimension(attrs.height);
+  return (w > 0 && w < 200) || (h > 0 && h < 120);
+}
+
+/**
+ * One key per underlying photo, so two crops of the same file count once. Wix keys by media id
+ * (the ~mv2 segment, crops differ after it); Squarespace serves one file from two hosts with
+ * different ids in the path, so the file name is what they share. Everything else: the URL
+ * without its query.
+ */
+export function photoKey(url: string): string {
+  const wix = url.match(/\/media\/([^/]+~mv2[^/]*)/i);
+  if (wix) return `wix:${wix[1]}`;
+  if (/squarespace(?:-cdn)?\.com\//i.test(url)) {
+    const name = url.split("?")[0].split("/").pop() ?? url;
+    try {
+      return `sqs:${decodeURIComponent(name).toLowerCase()}`;
+    } catch {
+      // A stray % in the file name is no reason to drop the whole scrape; the raw name keys it.
+      return `sqs:${name.toLowerCase()}`;
+    }
+  }
+  return url.split("?")[0];
+}
+
+/**
+ * The one gate every extractPhotos source goes through: not a logo, badge, icon, video thumbnail
+ * or tiny crop. The URL arrives resolved, so the logo words are matched against its path only:
+ * a site at brandywine-tours.com must not lose every photo to "brand" in its host name. The
+ * non-photo words keep the host, since several of them are hosts (ytimg, gravatar, maps.g).
+ */
+export function looksLikePhoto(url: string, alt?: string): boolean {
+  if (!url || url.startsWith("data:")) return false;
+  const path = url.replace(/^[a-z]+:\/\/[^/]*/i, "");
+  return !NON_PHOTO_RE.test(`${url} ${alt ?? ""}`) && !LOGO_RE.test(`${path} ${alt ?? ""}`) && !urlDeclaredTiny(url);
 }
 
 export function extractLogos(page: PageData): ImageCandidate[] {
@@ -333,33 +465,59 @@ export function extractLogos(page: PageData): ImageCandidate[] {
 
 export function extractPhotos(page: PageData, baseScore = 0): ImageCandidate[] {
   const found = new Map<string, ImageCandidate>();
+  // The og:image on a builder site is often the logo file under a name that does not say so:
+  // whatever the logo pass picked up is not a photo.
+  const logoKeys = new Set(extractLogos(page).map((l) => photoKey(l.url)));
   const add = (url: string | undefined, score: number, alt?: string) => {
     const source = photoSource(url, page.url);
-    if (!source || source.url.startsWith("data:")) return;
-    if (NON_PHOTO_RE.test(source.url)) return;
-    const key = source.url.split("?")[0];
+    if (!source || !looksLikePhoto(source.url, alt)) return;
+    const key = photoKey(source.url);
+    if (logoKeys.has(key)) return;
     const existing = found.get(key);
     const fallbackUrl = source.fallbackUrl ?? existing?.fallbackUrl;
-    if (!existing || existing.score < score) found.set(key, { ...source, alt, score, ...(fallbackUrl ? { fallbackUrl } : {}) });
-    else if (!existing.fallbackUrl && fallbackUrl) existing.fallbackUrl = fallbackUrl;
+    // Same score, same file: the larger crop is the one to keep.
+    const better =
+      !existing ||
+      existing.score < score ||
+      (existing.score === score && urlDeclaredWidth(source.url) > urlDeclaredWidth(existing.url));
+    if (better) found.set(key, { ...source, alt, score, ...(fallbackUrl ? { fallbackUrl } : {}) });
+    else if (existing && !existing.fallbackUrl && fallbackUrl) existing.fallbackUrl = fallbackUrl;
   };
 
   add(page.ogImage, 100 + baseScore);
+  // The hero a site preloads is the one it considers its best image.
+  for (const url of page.preloadImages) add(url, 105 + baseScore);
+
+  for (const source of page.sources) {
+    const src = imageSource(source.attrs);
+    if (!src || LOGO_RE.test(`${src} ${source.attrs.class ?? ""}`)) continue;
+    add(src, 60 + baseScore);
+  }
 
   for (const img of page.imgs) {
     const src = imageSource(img.attrs);
     if (!src) continue;
     const haystack = `${src} ${img.attrs.alt ?? ""} ${img.attrs.class ?? ""} ${img.attrs.id ?? ""}`;
     if (LOGO_RE.test(haystack) || NON_PHOTO_RE.test(haystack)) continue;
+    if (isTinyImage(img.attrs)) continue;
     const w = dimension(img.attrs.width);
     const h = dimension(img.attrs.height);
-    // Declared tiny images are icons even when the name does not say so.
-    if ((w && w < 200) || (h && h < 120)) continue;
     let score = 50 + baseScore;
     if (w >= 600 || h >= 400) score += 25;
     if (img.attrs.alt && img.attrs.alt.trim().length > 3) score += 10;
     if (/hero|banner|cover|featured|gallery|tour|experience|activity/i.test(haystack)) score += 10;
     add(src, score, img.attrs.alt);
+  }
+
+  for (const tag of page.backgrounds) {
+    const src = backgroundSource(tag.attrs);
+    if (!src) continue;
+    const haystack = `${src} ${tag.attrs.class ?? ""} ${tag.attrs.id ?? ""}`;
+    if (LOGO_RE.test(haystack) || NON_PHOTO_RE.test(haystack)) continue;
+    // No declared size to go on, so a background scores like a plain <img>.
+    let score = 50 + baseScore;
+    if (/hero|banner|cover|featured|gallery|carousel|slider|tour|experience|activity/i.test(haystack)) score += 10;
+    add(src, score);
   }
 
   return [...found.values()].sort((a, b) => b.score - a.score);
@@ -390,7 +548,7 @@ export function experiencePagePhotos(page: PageData): PhotoSource[] {
   for (const raw of [...page.imgs.map((img) => imageSource(img.attrs)), page.ogImage]) {
     const source = photoSource(raw, page.url);
     if (!source || !UNDERSTORY_EXPERIENCE_PHOTO_RE.test(source.url)) continue;
-    const key = source.url.split("?")[0];
+    const key = photoKey(source.url);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(source);

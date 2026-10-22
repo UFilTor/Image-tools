@@ -123,6 +123,17 @@ export function assertPublicHttpUrl(raw: string): URL {
   return url;
 }
 
+/** A site that answered with an error status; the status tells a bot wall (403, 429) from a dead page (404). */
+export class HttpError extends Error {
+  constructor(public readonly status: number) {
+    super(`The site answered ${status}`);
+    this.name = "HttpError";
+  }
+}
+
+/** Statuses a bot wall answers with: the site is up but refuses automated visitors. */
+export const BLOCKED_STATUSES = new Set([401, 403, 406, 429, 503]);
+
 export interface FetchedText {
   url: string;
   text: string;
@@ -169,15 +180,29 @@ export async function fetchText(
       },
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`The site answered ${res.status}`);
+    if (!res.ok) throw new HttpError(res.status);
     const buffer = await readCapped(res, maxBytes);
-    return {
-      url: finalUrl,
-      text: new TextDecoder("utf-8").decode(buffer),
-      contentType: res.headers.get("content-type") ?? "",
-    };
+    const contentType = res.headers.get("content-type") ?? "";
+    return { url: finalUrl, text: decodeBody(buffer, contentType), contentType };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// ISO-8859-1 sites (older Danish and Norwegian operators) keep their ø and å only when the body is
+// decoded with the charset they declare: the header first, then a <meta charset> in the first 4 KB.
+export function decodeBody(bytes: Uint8Array, contentType: string): string {
+  const fromHeader = contentType.match(/charset=["']?([\w-]+)/i)?.[1];
+  const head = new TextDecoder("latin1").decode(bytes.subarray(0, 4096));
+  const fromMeta =
+    head.match(/<meta[^>]+charset=["']?([\w-]+)/i)?.[1] ??
+    head.match(/<meta[^>]+content=["'][^"']*charset=([\w-]+)/i)?.[1];
+  const label = (fromHeader ?? fromMeta ?? "utf-8").toLowerCase();
+  try {
+    return new TextDecoder(label).decode(bytes);
+  } catch {
+    // Unknown label: UTF-8 is the least wrong guess.
+    return new TextDecoder("utf-8").decode(bytes);
   }
 }
 

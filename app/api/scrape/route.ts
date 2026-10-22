@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertPublicHttpUrl, upstreamMessage, withProtocol } from "@/lib/brand-scrape/fetch";
+import { assertPublicHttpUrl, BLOCKED_STATUSES, HttpError, upstreamMessage, withProtocol } from "@/lib/brand-scrape/fetch";
 import { clientIp, rateLimited } from "@/lib/rate-limit";
 import { scrapeWebsite } from "@/lib/brand-scrape/scrape";
 
@@ -7,6 +7,10 @@ import { scrapeWebsite } from "@/lib/brand-scrape/scrape";
 // so it needs more than the default function budget.
 export const maxDuration = 30;
 export const runtime = "nodejs";
+
+// Not exported: a route file may only export handlers and config.
+const BLOCKED_MESSAGE =
+  "That website blocks automated visitors. Open it in your browser, save the photos, then go back and upload them.";
 
 export async function POST(request: Request) {
   if (rateLimited(clientIp(request.headers), "scrape")) {
@@ -30,6 +34,11 @@ export async function POST(request: Request) {
   try {
     return NextResponse.json(await scrapeWebsite(url));
   } catch (error) {
+    // A bot wall answers 403 or 429 to every server-side visitor; no retry will get past it, so
+    // the message points at the way that works. Any other status (404, 500) is reported as such.
+    if (error instanceof HttpError && BLOCKED_STATUSES.has(error.status)) {
+      return NextResponse.json({ error: BLOCKED_MESSAGE, code: "blocked" }, { status: 502 });
+    }
     return NextResponse.json(
       { error: upstreamMessage(error, "Could not read that website") },
       { status: 502 }

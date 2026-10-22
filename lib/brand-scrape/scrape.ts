@@ -9,6 +9,7 @@ import {
   extractPhotos,
   pageAsExperience,
   parseHtml,
+  photoKey,
   photoSource,
 } from "./parse";
 
@@ -40,7 +41,7 @@ export async function scrapeWebsite(url: string): Promise<ScrapeResult> {
   const photos = new Map<string, ImageCandidate>();
   const addPhotos = (list: ImageCandidate[]) => {
     for (const photo of list) {
-      const key = photo.url.split("?")[0];
+      const key = photoKey(photo.url);
       const existing = photos.get(key);
       const fallbackUrl = photo.fallbackUrl ?? existing?.fallbackUrl;
       if (!existing || existing.score < photo.score) photos.set(key, fallbackUrl ? { ...photo, fallbackUrl } : photo);
@@ -76,7 +77,7 @@ export async function scrapeWebsite(url: string): Promise<ScrapeResult> {
   for (const exp of experiences) {
     const source = photoSource(exp.imageUrl, main.url);
     if (!source) continue;
-    const key = source.url.split("?")[0];
+    const key = photoKey(source.url);
     const existing = photos.get(key);
     if (!existing) photos.set(key, { ...source, alt: exp.title, score: 70 });
     else if (!existing.fallbackUrl && source.fallbackUrl) photos.set(key, { ...existing, fallbackUrl: source.fallbackUrl });
