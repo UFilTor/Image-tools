@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useModKey } from "@/lib/platform";
 import { setOverlayOpen } from "@/lib/overlay-state";
 import { FETCH_KEY, TOOLS, cardText, uploadCards } from "@/lib/constants";
+import { ExtensionInstall } from "@/components/ui/extension-install";
 
 interface ShortcutGroup {
   title: string;
@@ -102,7 +103,7 @@ export function HelpPanel() {
           role="dialog"
           aria-label="Keyboard shortcuts"
           tabIndex={-1}
-          className="fixed right-4 sm:right-6 top-20 z-30 w-[320px] bg-surface border border-border rounded-2xl p-4 shadow-[0_8px_32px_rgba(2,44,18,0.08)] animate-fadeUp focus:outline-none"
+          className="fixed right-4 sm:right-6 top-20 z-30 w-[320px] max-h-[calc(100dvh-6rem)] overflow-y-auto bg-surface border border-border rounded-2xl p-4 shadow-[0_8px_32px_rgba(2,44,18,0.08)] animate-fadeUp focus:outline-none"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="font-display uppercase font-bold text-[14px] text-primary tracking-[0.02em]">
@@ -133,6 +134,14 @@ export function HelpPanel() {
               </div>
             ))}
           </div>
+          <details className="mt-3 pt-3 border-t border-border">
+            <summary className="cursor-pointer text-[12px] font-semibold text-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              Send to Image Tools extension
+            </summary>
+            <div className="mt-2">
+              <ExtensionInstall />
+            </div>
+          </details>
         </div>
       )}
     </>

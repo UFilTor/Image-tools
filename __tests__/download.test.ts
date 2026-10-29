@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { cropFilename } from "@/lib/image-utils";
-import { extendDownloadPlan } from "@/lib/download";
+import { extendDownloadPlan, originalName, uniqueNames } from "@/lib/download";
 import { safeZoneForRatio, withSetPresets } from "@/lib/storefront";
 
 describe("download utils", () => {
@@ -28,5 +28,30 @@ describe("extendDownloadPlan", () => {
       ["a_extended.png", 16 / 10, null],
       ["b_extended.png", 16 / 10, null],
     ]);
+  });
+});
+
+describe("originalName", () => {
+  it("keeps the name and extension the URL already has", () => {
+    expect(originalName("https://brandstar.se/v2/assets/hero-2.jpg", "image/jpeg")).toBe("hero-2.jpg");
+    expect(originalName("https://cdn.x/p/556913311_n.jpeg?stp=dst", "image/jpeg")).toBe("556913311_n.jpeg");
+  });
+
+  it("names the file after what the server sent when that differs from the URL", () => {
+    expect(originalName("https://cdn.x/p/photo.jpg", "image/webp")).toBe("photo.webp");
+    expect(originalName("https://cdn.x/p/photo.tiff", "application/octet-stream")).toBe("photo.tiff");
+  });
+
+  it("adds an extension from the type when the URL has none, and a name when the path is empty", () => {
+    expect(originalName("https://cdn.x/media/abc123", "image/png")).toBe("abc123.png");
+    expect(originalName("https://cdn.x/", "image/webp", 2)).toBe("image-3.webp");
+  });
+});
+
+describe("uniqueNames", () => {
+  it("numbers repeats before the extension, ignoring case", () => {
+    expect(uniqueNames(["a.jpg", "b.jpg", "A.jpg", "a.jpg", "c"])).toEqual(["a.jpg", "b.jpg", "A-2.jpg", "a-3.jpg", "c"]);
+    // A name that already looks numbered is not handed out twice.
+    expect(uniqueNames(["a.jpg", "a.jpg", "a-2.jpg"])).toEqual(["a.jpg", "a-2.jpg", "a-2-2.jpg"]);
   });
 });

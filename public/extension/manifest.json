@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Send to Image Tools",
+  "version": "1.4",
+  "description": "Downloads the images on the page you are looking at as they are, or sends them to Understory Image Tools.",
+  "action": {
+    "default_title": "Download or send this page's images",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png"
+    },
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://image-tools-understory-vibers.vercel.app/*"
+  ]
+}

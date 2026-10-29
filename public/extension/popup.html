@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Send to Image Tools</title>
+    <link rel="stylesheet" href="popup.css" />
+    <script type="module" src="popup.js"></script>
+  </head>
+  <body>
+    <header class="head">
+      <h1>Images on this page</h1>
+      <p class="meta" id="meta">Reading the page…</p>
+      <div class="controls" id="controls" hidden>
+        <label class="toggle">
+          <input type="checkbox" id="hide-small" checked />
+          Hide small images
+        </label>
+        <button type="button" class="link" id="select-all">Select all</button>
+      </div>
+    </header>
+
+    <p class="note" id="note" hidden></p>
+    <ul class="grid" id="grid" aria-label="Images"></ul>
+
+    <footer class="foot" id="foot" hidden>
+      <span class="status" id="status" aria-live="polite">Pick images</span>
+      <button type="button" class="button" id="download" disabled>Download</button>
+      <button type="button" class="button primary" id="send" disabled>Send to Image Tools</button>
+    </footer>
+  </body>
+</html>

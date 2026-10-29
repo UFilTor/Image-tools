@@ -1,0 +1,10 @@
+<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Send to Image Tools: a photo with a download badge, in Understory Moss and Citrus.
+       Source for icon-16/32/48/128.png; re-render those after editing this. -->
+  <rect width="128" height="128" rx="28" fill="#022C12"/>
+  <rect x="18" y="22" width="76" height="62" rx="11" fill="none" stroke="#F0F97E" stroke-width="9"/>
+  <circle cx="40" cy="44" r="7.5" fill="#F0F97E"/>
+  <path d="M26 80 L48 57 L60 69 L73 55 L88 71 L88 80 Z" fill="#F0F97E"/>
+  <circle cx="94" cy="94" r="27" fill="#F0F97E" stroke="#022C12" stroke-width="7"/>
+  <path d="M94 79 V106 M82 95 L94 107 L106 95" stroke="#022C12" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

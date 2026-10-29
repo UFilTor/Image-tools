@@ -3,6 +3,7 @@ import { cropToBlob, queueCropFilename, orderedName, loadImageEl, canvasToBlob }
 import { upscaleFilename } from "./upscale";
 import { safeZoneForRatio, type SafeZone } from "./storefront";
 import { extendGeometry, renderExtended, extendFilename, extendSizeError, ExtendFill } from "./extend-utils";
+import { EXTENSION_FILES, EXTENSION_FOLDER } from "./bookmarklet";
 
 export interface DownloadResult {
   ok: boolean;
@@ -21,6 +22,88 @@ function triggerDownload(blob: Blob, fname: string): void {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const IMAGE_EXT = /\.(jpe?g|png|webp|gif|avif|svg|bmp|tiff?|heic)$/i;
+const EXT_FOR_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/avif": "avif",
+  "image/svg+xml": "svg",
+};
+
+/**
+ * A downloaded original's file name: the name in its URL, with the extension of what the server
+ * actually sent (a CDN may serve WebP for a .jpg address), or the URL's own when the type is unknown.
+ */
+export function originalName(url: string, type: string, index = 0): string {
+  let base = "";
+  try {
+    base = decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "");
+  } catch {
+    // keep the fallback name
+  }
+  base = base.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 100) || `image-${index + 1}`;
+  const typeExt = EXT_FOR_TYPE[type];
+  const urlExt = base.match(IMAGE_EXT)?.[1].toLowerCase().replace("jpeg", "jpg");
+  if (urlExt && (!typeExt || urlExt === typeExt)) return base;
+  return urlExt ? base.replace(IMAGE_EXT, `.${typeExt}`) : `${base}.${typeExt ?? "jpg"}`;
+}
+
+/** Make repeated names unique: the second "a.jpg" becomes "a-2.jpg", skipping names already taken. */
+export function uniqueNames(names: string[]): string[] {
+  const used = new Set<string>();
+  return names.map((name) => {
+    let candidate = name;
+    for (let n = 2; used.has(candidate.toLowerCase()); n++) candidate = name.replace(/(\.[^.]+)?$/, (ext) => `-${n}${ext}`);
+    used.add(candidate.toLowerCase());
+    return candidate;
+  });
+}
+
+/**
+ * Download images exactly as their sites serve them: one on its own, several as one zip. JSZip
+ * stores files uncompressed by default, so each file in the zip is byte-identical too.
+ */
+export async function dlOriginals(
+  sources: { url: string; blob: () => Promise<Blob> }[],
+  zipName: string,
+): Promise<DownloadResult> {
+  if (!sources.length) return { ok: false, error: "Nothing to download yet." };
+  const loaded = await Promise.all(sources.map((s) => s.blob().then((blob) => ({ url: s.url, blob }), () => null)));
+  const ok = loaded.filter((l): l is { url: string; blob: Blob } => l !== null);
+  if (!ok.length) return { ok: false, error: "Couldn't download those images. Try again." };
+  const names = uniqueNames(ok.map((l, i) => originalName(l.url, l.blob.type, i)));
+  const skipped = sources.length - ok.length;
+  const note = skipped ? `Skipped ${skipped} image${skipped === 1 ? "" : "s"} that couldn't be downloaded.` : undefined;
+  if (ok.length === 1) {
+    triggerDownload(ok[0].blob, names[0]);
+    return { ok: true, error: note };
+  }
+  const result = await zipAndDownload(ok.map((l, i) => ({ name: names[i], blob: async () => l.blob })), zipName);
+  return result.ok && note ? { ok: true, error: note } : result;
+}
+
+/**
+ * The Send to Image Tools extension as one zip, for "Get the extension". Every file must load, or
+ * the unzipped extension wouldn't run, so a missing one fails the whole download.
+ */
+export async function dlExtension(): Promise<DownloadResult> {
+  try {
+    const files = await Promise.all(
+      EXTENSION_FILES.map(async (name) => {
+        // Revalidate: after a deploy the zip must hold the new files, not a cached copy.
+        const res = await fetch(`/extension/${name}`, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`${name} (HTTP ${res.status})`);
+        return { name: `${EXTENSION_FOLDER}/${name}`, blob: await res.blob() };
+      }),
+    );
+    return zipAndDownload(files.map((f) => ({ name: f.name, blob: async () => f.blob })), `${EXTENSION_FOLDER}.zip`);
+  } catch (err) {
+    return { ok: false, error: `Couldn't download the extension: ${err instanceof Error ? err.message : "try again"}.` };
+  }
 }
 
 /** Download a URL (blob or data) as-is. */

@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  acceptsPhotos,
   BOOKMARKLET_PATH,
   BOOKMARKLET_VERSION,
   bookmarkletHref,
   bookmarkletMain,
+  collectPhotoUrls,
   parseSentPhotos,
   PHOTOS,
   READY,
@@ -11,11 +13,15 @@ import {
 
 const ORIGIN = "https://image-tools.example";
 
-// The bookmarklet runs from its source text, so run it the same way: anything it borrowed from
-// this module would be undefined here and throw.
-const runFromSource = (origin: string) =>
-  // SAFETY: the Function body returns bookmarkletMain's own source, so it has bookmarkletMain's signature.
-  (new Function(`return (${bookmarkletMain.toString()})`)() as typeof bookmarkletMain)(origin);
+// The bookmarklet runs from its source text, so run it the same way: anything it or the collector
+// borrowed from this module would be undefined here and throw.
+const runFromSource = (origin: string) => {
+  // SAFETY: each Function body returns that function's own source, so it keeps that function's signature.
+  const main = new Function(`return (${bookmarkletMain.toString()})`)() as typeof bookmarkletMain;
+  // SAFETY: as above, for the collector.
+  const collect = new Function(`return (${collectPhotoUrls.toString()})`)() as typeof collectPhotoUrls;
+  main(origin, collect);
+};
 
 function img(src: string, { w = 0, h = 0, srcset = "", alt = "" } = {}) {
   const el = document.createElement("img");
@@ -34,10 +40,12 @@ afterEach(() => {
 });
 
 describe("bookmarkletHref", () => {
-  it("is a javascript: URL that calls the bookmarklet with this origin", () => {
+  it("is a javascript: URL that calls the bookmarklet with this origin and the collector", () => {
     const href = bookmarkletHref(ORIGIN);
     expect(href.startsWith("javascript:")).toBe(true);
-    expect(decodeURIComponent(href.slice("javascript:".length))).toContain(`(${JSON.stringify(ORIGIN)})`);
+    const code = decodeURIComponent(href.slice("javascript:".length));
+    expect(code).toContain(`(${JSON.stringify(ORIGIN)}, ${collectPhotoUrls.toString()})`);
+    expect(() => new Function(code)).not.toThrow();
   });
 
   it("repeats the path, message types and version the receiver listens for", () => {
@@ -102,6 +110,53 @@ describe("bookmarkletMain", () => {
   });
 });
 
+describe("collectPhotoUrls", () => {
+  const paths = (urls: string[]) => urls.map((u) => new URL(u).pathname);
+
+  it("finds lazy-loaded photos whose real address still waits in a data attribute, but not theme words", () => {
+    // Loaded 1x1 placeholder with the photo in data-src, as lazysizes and WordPress do it.
+    img("data:image/gif;base64,R0lGODlhAQABAAAAACw=", { w: 1, h: 1 });
+    document.body.lastElementChild?.setAttribute("data-src", "/uploads/lazy-hero.jpg");
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<picture><source data-srcset="/uploads/pic-800.webp 800w, /uploads/pic-1600.webp 1600w"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></picture>
+       <div data-bg="url('/uploads/banner.jpg')"></div><div data-background="dark"></div><div data-bg="/uploads/strip.webp"></div>`,
+    );
+    expect(paths(collectPhotoUrls()).sort()).toEqual(["/uploads/banner.jpg", "/uploads/lazy-hero.jpg", "/uploads/pic-1600.webp", "/uploads/strip.webp"]);
+  });
+
+  it("keeps logos and SVGs and follows page order for the picker", () => {
+    img("/photos/b-small.jpg", { w: 400, h: 300 });
+    img("/assets/logo.png", { w: 800, h: 400 });
+    img("/img/diagram.svg", { w: 900, h: 900 });
+    img("/photos/a-large.jpg", { w: 2000, h: 1500 });
+    expect(paths(collectPhotoUrls())).toEqual(["/photos/a-large.jpg", "/photos/b-small.jpg"]);
+    expect(paths(collectPhotoUrls({ everything: true, order: "page", minSide: 0 }))).toEqual([
+      "/photos/b-small.jpg",
+      "/assets/logo.png",
+      "/img/diagram.svg",
+      "/photos/a-large.jpg",
+    ]);
+  });
+});
+
+describe("acceptsPhotos", () => {
+  it("takes the bookmarklet's photos only from the opener, and the extension's only from the tab itself", () => {
+    const frame = document.createElement("iframe");
+    document.body.appendChild(frame);
+    // SAFETY: an iframe appended to the document always has a content window.
+    const opener = frame.contentWindow as Window;
+    const tab = { opener, self: window, origin: "https://tools.x" };
+    expect(acceptsPhotos("bookmarklet", { source: opener, origin: "https://site.x" }, tab)).toBe(true);
+    expect(acceptsPhotos("bookmarklet", { source: window, origin: "https://tools.x" }, tab)).toBe(false);
+    expect(acceptsPhotos("bookmarklet", { source: null, origin: "https://site.x" }, { ...tab, opener: null })).toBe(false);
+    expect(acceptsPhotos("extension", { source: window, origin: "https://tools.x" }, tab)).toBe(true);
+    expect(acceptsPhotos("extension", { source: window, origin: "https://evil.x" }, tab)).toBe(false);
+    expect(acceptsPhotos("extension", { source: opener, origin: "https://tools.x" }, tab)).toBe(false);
+    expect(acceptsPhotos(null, { source: opener, origin: "https://site.x" }, tab)).toBe(false);
+  });
+});
+
 describe("parseSentPhotos", () => {
   it("keeps http(s) photos and image bytes, and drops everything else", () => {
     const sent = parseSentPhotos({
@@ -117,6 +172,12 @@ describe("parseSentPhotos", () => {
     expect(sent?.photos).toHaveLength(2);
     expect(sent?.photos[0].blob).toBeInstanceOf(Blob);
     expect(sent?.photos[1].blob).toBeUndefined();
+  });
+
+  it("tells the extension from the bookmark, and treats anything else as the bookmark", () => {
+    expect(parseSentPhotos({ type: PHOTOS, via: "extension", page: "https://x.se/", photos: [] })?.via).toBe("extension");
+    expect(parseSentPhotos({ type: PHOTOS, page: "https://x.se/", photos: [] })?.via).toBe("bookmark");
+    expect(parseSentPhotos({ type: PHOTOS, via: "other", page: "https://x.se/", photos: [] })?.via).toBe("bookmark");
   });
 
   it("counts a bookmark from before versions existed as version 0", () => {

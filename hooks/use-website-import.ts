@@ -11,7 +11,9 @@ export interface FoundPhoto extends ImageCandidate {
 export interface WebsiteImport {
   site: string;
   items: FoundPhoto[];
-  /** Sent by a bookmark dragged before the current BOOKMARKLET_VERSION: FromWebsite asks for a new drag. */
+  /** Which one sent it: the notice for an outdated sender names the fix for that one. */
+  via: "bookmark" | "extension";
+  /** Sent with code older than BOOKMARKLET_VERSION: FromWebsite asks for a new drag or a reload. */
   outdated: boolean;
 }
 

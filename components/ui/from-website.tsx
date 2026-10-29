@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { prepareFiles } from "@/lib/file-intake";
 import type { ImageCandidate, PhotoSource, ScrapeKind } from "@/lib/brand-scrape/types";
 import { fetchPhoto, proxiedImage } from "@/lib/website-image";
+import { dlOriginals, originalName } from "@/lib/download";
+import { ExtensionDownloadButton, ExtensionInstall } from "@/components/ui/extension-install";
+import { useDownload } from "@/hooks/use-download";
 import { bookmarkletHref } from "@/lib/bookmarklet";
 import { setWebsiteImport, useWebsiteImport, type FoundPhoto, type WebsiteImport } from "@/hooks/use-website-import";
 import { FETCH_KEY, checkerBg } from "@/lib/constants";
@@ -27,17 +30,6 @@ interface FromWebsiteProps {
 const MAX_SHOWN = { logo: 8, photo: 24 } as const;
 
 
-function fileNameFor(url: string, index: number, type: string): string {
-  let base = "";
-  try {
-    base = decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "");
-  } catch {
-    // keep the fallback name
-  }
-  base = base.replace(/\.[a-z0-9]+$/i, "").replace(/[^\w-]+/g, "-").slice(0, 60) || `website-image-${index + 1}`;
-  const ext = type.includes("svg") ? "svg" : type.includes("png") ? "png" : type.includes("webp") ? "webp" : type.includes("gif") ? "gif" : "jpg";
-  return `${base}.${ext}`;
-}
 
 /** The "Send to Image Tools" bookmarklet, to drag to the bookmarks bar. React blocks javascript: hrefs, so the ref sets it. */
 function BookmarkletLink() {
@@ -80,11 +72,13 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
   const [error, setError] = useState<string | null>(null);
   /** The site's bot wall refused the server: the photo tools offer the bookmarklet instead of a plain error. */
   const [blocked, setBlocked] = useState<string | null>(null);
+  const [showInstall, setShowInstall] = useState(false);
   const [found, setFound] = useState<{ site: string; items: FoundPhoto[]; experience: PhotoSource[] } | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   /** Originals whose thumbnail failed (too big for the proxy, say): those show the optimized copy. */
   const [broken, setBroken] = useState<ReadonlySet<string>>(new Set());
   const noun = kind === "logo" ? "logo" : "photo";
+  const download = useDownload();
 
   // Photos the bookmarklet sent open this panel with them, until a fetch or Back sets them aside.
   const imported = useWebsiteImport();
@@ -138,9 +132,25 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
     setPicked((p) => (multiple ? (p.includes(u) ? p.filter((x) => x !== u) : [...p, u]) : p[0] === u ? [] : [u]));
 
   /**
-   * Download `sources` through the proxy (optimized copy if an original fails), in order, and hand them to `deliver`.
-   * Photos the bookmarklet sent with their bytes are read from their object URL instead.
+   * A found image's bytes: through the proxy (optimized copy if an original fails), or from its
+   * object URL when the bookmarklet or extension sent the bytes along.
    */
+  const sourceBlob = (source: PhotoSource & { localUrl?: string }): Promise<Blob> =>
+    source.localUrl ? fetch(source.localUrl).then((r) => r.blob()) : fetchPhoto(source);
+
+  const pickedSources = () => (shown ? picked.map((u) => shown.items.find((c) => c.url === u) ?? { url: u }) : []);
+
+  /** Download the picked images unchanged: one file, or a zip named after the site. */
+  const downloadOriginals = () =>
+    download.run(() =>
+      dlOriginals(
+        // The original only: no fallback to the site's smaller copy, so a failure counts as skipped.
+        pickedSources().map((source) => ({ url: source.url, blob: () => sourceBlob({ url: source.url, localUrl: "localUrl" in source ? source.localUrl : undefined }) })),
+        `${(shown?.site ?? "website").replace(/[^\w.-]+/g, "-")}.zip`,
+      ),
+    );
+
+  /** Load `sources` in order and hand them to `deliver`, like a paste or a drop. */
   const loadSources = async (sources: (PhotoSource & { localUrl?: string })[], deliver: (files: FileList) => void) => {
     if (!sources.length || busy) return;
     setBusy("load");
@@ -148,8 +158,8 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
     try {
       const files = await Promise.all(
         sources.map(async (source, i) => {
-          const blob = source.localUrl ? await fetch(source.localUrl).then((r) => r.blob()) : await fetchPhoto(source);
-          return new File([blob], fileNameFor(source.url, i, blob.type), { type: blob.type });
+          const blob = await sourceBlob(source);
+          return new File([blob], originalName(source.url, blob.type, i), { type: blob.type });
         }),
       );
       const { files: ready, error: intakeError } = await prepareFiles(files);
@@ -163,6 +173,26 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
       setBusy(null);
     }
   };
+
+  // Arc and Dia don't run bookmarklets: wherever the bookmark is offered, the extension is too.
+  const getExtension = (
+    <>
+      Using Arc or Dia?{" "}
+      <button
+        type="button"
+        aria-expanded={showInstall}
+        onClick={() => setShowInstall((v) => !v)}
+        className="font-semibold text-primary underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        Get the extension
+      </button>
+    </>
+  );
+  const installBox = showInstall && (
+    <div className="mt-3 rounded-xl border border-border bg-primary-bg px-3.5 py-3">
+      <ExtensionInstall />
+    </div>
+  );
 
   if (!isOpen) {
     return (
@@ -236,9 +266,13 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
         {busy === "scrape" && <p className="text-xs text-text-secondary mt-2">Reading the website. This takes a few seconds.</p>}
         {error && <p className="text-xs text-error font-medium mt-2" role="alert">{error}</p>}
         {blocked && (
-          <p className="text-xs text-error font-medium mt-2 leading-relaxed" role="alert">
-            {blocked} Drag <BookmarkletLink /> to your bookmarks bar. Then open the site and click the bookmark.
-          </p>
+          <>
+            <p className="text-xs text-error font-medium mt-2 leading-relaxed" role="alert">
+              {blocked} Drag <BookmarkletLink /> to your bookmarks bar. Then open the site and click the bookmark.{" "}
+              {getExtension}
+            </p>
+            {installBox}
+          </>
         )}
       </div>
 
@@ -246,8 +280,21 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
         <div className="mt-4">
           {fromBookmark?.outdated && (
             <p className="text-xs text-text rounded-xl border-[1.5px] border-primary bg-primary-bg px-3.5 py-3 mb-3 leading-relaxed">
-              <span className="font-semibold">Your Send to Image Tools bookmark is out of date.</span> Drag <BookmarkletLink /> to your
-              bookmarks bar again, then delete the old bookmark.
+              {fromBookmark.via === "extension" ? (
+                <>
+                  <span className="font-semibold">Your Send to Image Tools extension is out of date.</span> Download the new
+                  version, replace the old folder with it, then click reload on the extension in{" "}
+                  <code className="px-1 rounded bg-surface-alt">chrome://extensions</code>.
+                  <span className="block mt-2">
+                    <ExtensionDownloadButton label="Download the new version" />
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold">Your Send to Image Tools bookmark is out of date.</span> Drag{" "}
+                  <BookmarkletLink /> to your bookmarks bar again, then delete the old bookmark.
+                </>
+              )}
             </p>
           )}
           {onExperience && shown.experience.length > 0 && (
@@ -305,19 +352,31 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
               Use full experience ({shown.experience.length})
             </Button>
           )}
-          <Button type="button" variant="primary" onClick={() => loadSources(picked.map((u) => shown.items.find((c) => c.url === u) ?? { url: u }), onFiles)} disabled={!picked.length || !!busy}>
+          <Button type="button" onClick={downloadOriginals} disabled={!picked.length || !!busy || download.busy}>
+            {download.busy ? "Preparing…" : "Download originals"}
+          </Button>
+          <Button type="button" variant="primary" onClick={() => loadSources(pickedSources(), onFiles)} disabled={!picked.length || !!busy}>
             {busy === "load"
               ? "Loading…"
               : picked.length > 1
                 ? `Use ${picked.length} ${noun}s`
                 : `Use ${noun}`}
           </Button>
+          {download.error && (
+            <p className="w-full text-xs text-error font-medium" role="alert">
+              {download.error}
+            </p>
+          )}
         </div>
       ) : kind === "photo" && !blocked ? (
         // For sites the server can't read: the bookmarklet runs in the user's own browser instead.
-        <p className="text-xs text-text-secondary mt-3 pb-5 leading-relaxed">
-          Site blocked, or photos missing? Drag <BookmarkletLink /> to your bookmarks bar. Then open the site and click the bookmark.
-        </p>
+        <div className="mt-3 pb-5">
+          <p className="text-xs text-text-secondary leading-relaxed">
+            Site blocked, or photos missing? Drag <BookmarkletLink /> to your bookmarks bar. Then open the site and click the
+            bookmark. {getExtension}
+          </p>
+          {installBox}
+        </div>
       ) : (
         <div className="pb-5" />
       )}
