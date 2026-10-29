@@ -1,5 +1,6 @@
 import type { ExperienceCandidate, ImageCandidate, ScrapeResult } from "./types";
 import { fetchText } from "./fetch";
+import { pageClues } from "../scrape-log";
 import {
   dedupeExperiences,
   experienceLinks,
@@ -91,5 +92,6 @@ export async function scrapeWebsite(url: string): Promise<ScrapeResult> {
     photos: [...photos.values()].sort((a, b) => b.score - a.score).slice(0, MAX_PHOTOS),
     experiencePhotos: experiencePagePhotos(page),
     pagesFetched,
+    clues: pageClues(page),
   };
 }

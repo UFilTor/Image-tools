@@ -1,5 +1,8 @@
 // Types for the brand scrape kit. Image Tools copy: only what the scraper returns.
 
+/** Which tool asked: the Logo tool wants logos, every other tool photos. */
+export type ScrapeKind = "photo" | "logo";
+
 // Where a found photo can be downloaded from: the original, and the site's optimized copy when the
 // page served it through /_next/image or /_vercel/image (a fallback for originals too big to fetch).
 export interface PhotoSource {
@@ -38,4 +41,6 @@ export interface ScrapeResult {
   experiencePhotos: PhotoSource[];
   // Pages that were fetched, for the status line in the configurator.
   pagesFetched: number;
+  // What the home page held (image tag counts, platform, title), for the scrape log (lib/scrape-log.ts).
+  clues?: string;
 }

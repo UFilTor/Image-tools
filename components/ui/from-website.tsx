@@ -1,10 +1,12 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { prepareFiles } from "@/lib/file-intake";
-import type { ImageCandidate, PhotoSource } from "@/lib/brand-scrape/types";
+import type { ImageCandidate, PhotoSource, ScrapeKind } from "@/lib/brand-scrape/types";
 import { fetchPhoto, proxiedImage } from "@/lib/website-image";
+import { bookmarkletHref } from "@/lib/bookmarklet";
+import { setWebsiteImport, useWebsiteImport, type FoundPhoto, type WebsiteImport } from "@/hooks/use-website-import";
 import { FETCH_KEY, checkerBg } from "@/lib/constants";
 import { isPlainShortcut } from "@/lib/keyboard";
 import { KeyboardHint } from "@/components/ui/keyboard-hint";
@@ -12,7 +14,7 @@ import { userMessage } from "@/lib/errors";
 
 interface FromWebsiteProps {
   /** Logos for the Logo tool, photos for the photo tools */
-  kind: "logo" | "photo";
+  kind: ScrapeKind;
   multiple?: boolean;
   /** Same loader the page uses for clipboard paste */
   onFiles: (files: FileList) => void;
@@ -37,6 +39,23 @@ function fileNameFor(url: string, index: number, type: string): string {
   return `${base}.${ext}`;
 }
 
+/** The "Send to Image Tools" bookmarklet, to drag to the bookmarks bar. React blocks javascript: hrefs, so the ref sets it. */
+function BookmarkletLink() {
+  const setHref = useCallback((a: HTMLAnchorElement | null) => {
+    a?.setAttribute("href", bookmarkletHref(window.location.origin));
+  }, []);
+  return (
+    <a
+      ref={setHref}
+      onClick={(e) => e.preventDefault()}
+      title="Drag this to your bookmarks bar"
+      className="inline-block mx-0.5 px-2 py-0.5 rounded-md border border-primary bg-primary-bg font-semibold text-primary cursor-grab focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      Send to Image Tools
+    </a>
+  );
+}
+
 /**
  * "Fetch from a website" (a full-width button under the drop zones): paste a customer's URL, pick
  * from the logos or photos the brand scraper finds (`/api/scrape`), and load them into the tool
@@ -59,17 +78,29 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState<"scrape" | "load" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [found, setFound] = useState<{ site: string; items: ImageCandidate[]; experience: PhotoSource[] } | null>(null);
+  /** The site's bot wall refused the server: the photo tools offer the bookmarklet instead of a plain error. */
+  const [blocked, setBlocked] = useState<string | null>(null);
+  const [found, setFound] = useState<{ site: string; items: FoundPhoto[]; experience: PhotoSource[] } | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   /** Originals whose thumbnail failed (too big for the proxy, say): those show the optimized copy. */
   const [broken, setBroken] = useState<ReadonlySet<string>>(new Set());
   const noun = kind === "logo" ? "logo" : "photo";
 
+  // Photos the bookmarklet sent open this panel with them, until a fetch or Back sets them aside.
+  const imported = useWebsiteImport();
+  const offered = kind === "photo" ? imported : null;
+  const [setAside, setSetAside] = useState<WebsiteImport | null>(null);
+  const fromBookmark = offered && offered !== setAside && !found ? offered : null;
+  const shown = found ?? (fromBookmark ? { ...fromBookmark, experience: [] } : null);
+  const isOpen = open || !!fromBookmark;
+
   const scrape = async (e: FormEvent) => {
     e.preventDefault();
     if (!url.trim() || busy) return;
+    setSetAside(offered);
     setBusy("scrape");
     setError(null);
+    setBlocked(null);
     setFound(null);
     setPicked([]);
     setBroken(new Set());
@@ -77,9 +108,13 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, kind }),
       });
       const data = await res.json().catch(() => null);
+      if (!res.ok && data?.code === "blocked" && kind === "photo" && typeof data.error === "string") {
+        setBlocked(data.error);
+        return;
+      }
       if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : `Couldn't read that website (HTTP ${res.status})`);
       const list: unknown = kind === "logo" ? data?.logos : data?.photos;
       const items = (Array.isArray(list) ? list : [])
@@ -102,21 +137,26 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
   const toggle = (u: string) =>
     setPicked((p) => (multiple ? (p.includes(u) ? p.filter((x) => x !== u) : [...p, u]) : p[0] === u ? [] : [u]));
 
-  /** Download `sources` through the proxy (optimized copy if an original fails), in order, and hand them to `deliver`. */
-  const loadSources = async (sources: PhotoSource[], deliver: (files: FileList) => void) => {
+  /**
+   * Download `sources` through the proxy (optimized copy if an original fails), in order, and hand them to `deliver`.
+   * Photos the bookmarklet sent with their bytes are read from their object URL instead.
+   */
+  const loadSources = async (sources: (PhotoSource & { localUrl?: string })[], deliver: (files: FileList) => void) => {
     if (!sources.length || busy) return;
     setBusy("load");
     setError(null);
     try {
       const files = await Promise.all(
         sources.map(async (source, i) => {
-          const blob = await fetchPhoto(source);
+          const blob = source.localUrl ? await fetch(source.localUrl).then((r) => r.blob()) : await fetchPhoto(source);
           return new File([blob], fileNameFor(source.url, i, blob.type), { type: blob.type });
         }),
       );
       const { files: ready, error: intakeError } = await prepareFiles(files);
       if (intakeError) throw new Error(intakeError);
       if (ready) deliver(ready);
+      // Used once: later upload screens open on their drop zones again, not on these photos.
+      if (fromBookmark) setWebsiteImport(null);
     } catch (err) {
       setError(userMessage(err));
     } finally {
@@ -124,7 +164,7 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
     }
   };
 
-  if (!open) {
+  if (!isOpen) {
     return (
       <>
         {children}
@@ -162,7 +202,10 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
           </label>
           <button
             type="button"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false);
+              setSetAside(offered);
+            }}
             className="text-[13px] font-semibold text-text-secondary hover:text-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             ← Back
@@ -192,22 +235,33 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
       <div aria-live="polite">
         {busy === "scrape" && <p className="text-xs text-text-secondary mt-2">Reading the website. This takes a few seconds.</p>}
         {error && <p className="text-xs text-error font-medium mt-2" role="alert">{error}</p>}
+        {blocked && (
+          <p className="text-xs text-error font-medium mt-2 leading-relaxed" role="alert">
+            {blocked} Drag <BookmarkletLink /> to your bookmarks bar. Then open the site and click the bookmark.
+          </p>
+        )}
       </div>
 
-      {found && (
+      {shown && (
         <div className="mt-4">
-          {onExperience && found.experience.length > 0 && (
+          {fromBookmark?.outdated && (
+            <p className="text-xs text-text rounded-xl border-[1.5px] border-primary bg-primary-bg px-3.5 py-3 mb-3 leading-relaxed">
+              <span className="font-semibold">Your Send to Image Tools bookmark is out of date.</span> Drag <BookmarkletLink /> to your
+              bookmarks bar again, then delete the old bookmark.
+            </p>
+          )}
+          {onExperience && shown.experience.length > 0 && (
             <p className="text-xs text-text rounded-xl border-[1.5px] border-primary bg-primary-bg px-3.5 py-3 mb-3">
-              <span className="font-semibold">Experience page with {found.experience.length} photo{found.experience.length === 1 ? "" : "s"}.</span>{" "}
+              <span className="font-semibold">Experience page with {shown.experience.length} photo{shown.experience.length === 1 ? "" : "s"}.</span>{" "}
               Use full experience crops them all at once: the main photo and the secondary photos, in page order.
             </p>
           )}
           <p className="text-xs text-text-secondary mb-2">
-            {found.items.length} {noun}
-            {found.items.length === 1 ? "" : "s"} on {found.site}. {multiple ? "Pick one or more." : "Pick one."}
+            {shown.items.length} {noun}
+            {shown.items.length === 1 ? "" : "s"} on {shown.site}. {multiple ? "Pick one or more." : "Pick one."}
           </p>
           <ul className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-            {found.items.map((c) => {
+            {shown.items.map((c) => {
               const on = picked.includes(c.url);
               return (
                 <li key={c.url}>
@@ -223,7 +277,7 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- proxied third-party images, not optimizable */}
                     <img
-                      src={proxiedImage(broken.has(c.url) && c.fallbackUrl ? c.fallbackUrl : c.url)}
+                      src={c.localUrl ?? proxiedImage(broken.has(c.url) && c.fallbackUrl ? c.fallbackUrl : c.url)}
                       onError={() => c.fallbackUrl && !broken.has(c.url) && setBroken((b) => new Set(b).add(c.url))}
                       alt=""
                       loading="lazy"
@@ -238,7 +292,7 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
         </div>
       )}
 
-      {found ? (
+      {shown ? (
         // Sticky: the way on stays in view while scrolling a long grid.
         <div className="sticky bottom-0 z-10 -mx-[22px] mt-4 px-[22px] py-3 bg-surface border-t border-border rounded-b-2xl shadow-[0_-6px_16px_rgba(2,44,18,0.06)] flex items-center gap-2 flex-wrap">
           <span className="text-xs text-text-secondary mr-auto tabular-nums" aria-live="polite">
@@ -246,12 +300,12 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
               ? `${picked.length} ${noun}${picked.length === 1 ? "" : "s"} picked`
               : multiple ? `Pick one or more ${noun}s` : `Pick a ${noun}`}
           </span>
-          {onExperience && found.experience.length > 0 && (
-            <Button type="button" onClick={() => loadSources(found.experience, onExperience)} disabled={!!busy}>
-              Use full experience ({found.experience.length})
+          {onExperience && shown.experience.length > 0 && (
+            <Button type="button" onClick={() => loadSources(shown.experience, onExperience)} disabled={!!busy}>
+              Use full experience ({shown.experience.length})
             </Button>
           )}
-          <Button type="button" variant="primary" onClick={() => loadSources(picked.map((u) => found.items.find((c) => c.url === u) ?? { url: u }), onFiles)} disabled={!picked.length || !!busy}>
+          <Button type="button" variant="primary" onClick={() => loadSources(picked.map((u) => shown.items.find((c) => c.url === u) ?? { url: u }), onFiles)} disabled={!picked.length || !!busy}>
             {busy === "load"
               ? "Loading…"
               : picked.length > 1
@@ -259,6 +313,11 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
                 : `Use ${noun}`}
           </Button>
         </div>
+      ) : kind === "photo" && !blocked ? (
+        // For sites the server can't read: the bookmarklet runs in the user's own browser instead.
+        <p className="text-xs text-text-secondary mt-3 pb-5 leading-relaxed">
+          Site blocked, or photos missing? Drag <BookmarkletLink /> to your bookmarks bar. Then open the site and click the bookmark.
+        </p>
       ) : (
         <div className="pb-5" />
       )}

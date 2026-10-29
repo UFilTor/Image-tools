@@ -11,6 +11,7 @@
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import type { ScrapeKind } from "./types";
 
 export const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
@@ -100,9 +101,26 @@ async function assertResolvesPublic(url: URL): Promise<void> {
  * (connection refused, TLS failure). Callers show this instead.
  */
 export function upstreamMessage(error: unknown, fallback: string): string {
-  if (error instanceof TypeError && /fetch failed/i.test(error.message)) return "Couldn't reach that website";
-  if (error instanceof Error && error.name === "AbortError") return "That website took too long to answer";
+  if (isFetchFailed(error)) return "Couldn't reach that website";
+  if (isTimeout(error)) return "That website took too long to answer";
   return error instanceof Error ? error.message : fallback;
+}
+
+const isFetchFailed = (error: unknown) => error instanceof TypeError && /fetch failed/i.test(error.message);
+const isTimeout = (error: unknown) => error instanceof Error && error.name === "AbortError";
+
+/** The site could not be reached at all: no answer (DNS, refused, TLS) or no answer in time. */
+export function isUnreachable(error: unknown): boolean {
+  return isFetchFailed(error) || isTimeout(error);
+}
+
+/**
+ * What a bot wall's refusal says. The photo tools follow it with the Send to Image Tools bookmark
+ * (FromWebsite); the Logo tool has no bookmark, so it also gets the manual way round.
+ */
+export function blockedMessage(kind: ScrapeKind): string {
+  const message = "That website blocks automated visitors.";
+  return kind === "logo" ? `${message} Open it in your browser, save the photos, then go back and upload them.` : message;
 }
 
 export function assertPublicHttpUrl(raw: string): URL {
