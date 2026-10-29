@@ -27,7 +27,7 @@ export function ExtensionInstall() {
   return (
     <div className="text-xs text-text leading-relaxed">
       <p className="text-text-secondary mb-2.5">
-        Download a page&apos;s images as they are, or send them here. Works in Arc, Dia and Chrome.
+        Download a page&apos;s images and videos as they are, or send the images here. Works in Chrome and other Chromium-based browsers.
       </p>
       <ExtensionDownloadButton />
       <ol className="list-decimal pl-4 mt-3 space-y-1">
@@ -38,7 +38,7 @@ export function ExtensionInstall() {
           Open <code className="px-1 rounded bg-surface-alt">chrome://extensions</code> in your browser.
         </li>
         <li>
-          Turn on <span className="font-semibold">Developer mode</span> (top right).
+          Turn on <span className="font-semibold">Developer mode</span>.
         </li>
         <li>
           Click <span className="font-semibold">Load unpacked</span> and choose the{" "}

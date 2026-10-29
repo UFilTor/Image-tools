@@ -81,3 +81,44 @@ export const collectPhotoUrls = function collectPhotoUrls(options = {}) {
     }
     return list.slice(0, MAX).map((p) => p.url);
 };
+
+export const collectVideos = function collectVideos() {
+    const found = new Map();
+    const isStream = (url) => url.protocol === "blob:" || /\.(m3u8|mpd)$/i.test(url.pathname);
+    const fileUrl = (raw) => {
+        if (!raw || raw.startsWith("data:"))
+            return undefined;
+        try {
+            return new URL(raw, location.href);
+        }
+        catch {
+            return undefined;
+        }
+    };
+    const add = (url, poster) => {
+        if (/^https?:$/.test(url.protocol) && !found.has(url.href))
+            found.set(url.href, poster ? { url: url.href, poster } : { url: url.href });
+    };
+    let streams = 0;
+    for (const video of Array.from(document.querySelectorAll("video"))) {
+        const candidates = [
+            video.currentSrc,
+            video.getAttribute("src"),
+            video.getAttribute("data-src"),
+            ...Array.from(video.querySelectorAll("source")).flatMap((s) => [s.getAttribute("src"), s.getAttribute("data-src")]),
+        ]
+            .map(fileUrl)
+            .filter((u) => u !== undefined);
+        const file = candidates.find((u) => !isStream(u));
+        if (file)
+            add(file, fileUrl(video.poster)?.href);
+        else if (candidates.length)
+            streams++;
+    }
+    for (const meta of Array.from(document.querySelectorAll('meta[property="og:video"], meta[property="og:video:url"], meta[property="og:video:secure_url"]'))) {
+        const url = fileUrl(meta.getAttribute("content"));
+        if (url && /\.(mp4|webm|mov|m4v|ogv)$/i.test(url.pathname))
+            add(url);
+    }
+    return { videos: [...found.values()], streams };
+};

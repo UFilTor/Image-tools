@@ -177,7 +177,7 @@ export function FromWebsite({ kind, multiple = false, onFiles, onExperience, chi
   // Arc and Dia don't run bookmarklets: wherever the bookmark is offered, the extension is too.
   const getExtension = (
     <>
-      Using Arc or Dia?{" "}
+      Bookmark not working?{" "}
       <button
         type="button"
         aria-expanded={showInstall}

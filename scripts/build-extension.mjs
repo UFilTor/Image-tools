@@ -31,15 +31,15 @@ export function extensionFiles(origin) {
   // generated collect.js need it self-contained anyway).
   const mod = { exports: {} };
   vm.runInNewContext(js, { module: mod, exports: mod.exports });
-  const { collectPhotoUrls, BOOKMARKLET_VERSION, EXTENSION_FILES } = mod.exports;
+  const { collectPhotoUrls, collectVideos, BOOKMARKLET_VERSION, EXTENSION_FILES } = mod.exports;
 
   const manifest = {
     manifest_version: 3,
     name: "Send to Image Tools",
     version: `1.${BOOKMARKLET_VERSION}`,
-    description: "Downloads the images on the page you are looking at as they are, or sends them to Understory Image Tools.",
+    description: "Downloads the images and videos on the page you are looking at as they are, or sends the images to Understory Image Tools.",
     action: {
-      default_title: "Download or send this page's images",
+      default_title: "Download this page's images and videos",
       default_icon: { 16: "icon-16.png", 32: "icon-32.png" },
       default_popup: "popup.html",
     },
@@ -54,7 +54,7 @@ export function extensionFiles(origin) {
   const generated = {
     "manifest.json": `${JSON.stringify(manifest, null, 2)}\n`,
     "config.js": `${HEADER}export const IMAGE_TOOLS = ${JSON.stringify(origin)};\nexport const VERSION = ${BOOKMARKLET_VERSION};\n`,
-    "collect.js": `${HEADER}export const collectPhotoUrls = ${collectPhotoUrls.toString()};\n`,
+    "collect.js": `${HEADER}export const collectPhotoUrls = ${collectPhotoUrls.toString()};\n\nexport const collectVideos = ${collectVideos.toString()};\n`,
   };
   return { generated, handWritten: EXTENSION_FILES.filter((name) => !(name in generated)) };
 }

@@ -20,7 +20,7 @@ export const PHOTOS = "image-tools:photos";
  * the bookmark to be dragged again or the extension reloaded. Bookmarks from before versions existed
  * send none and count as 0.
  */
-export const BOOKMARKLET_VERSION = 4;
+export const BOOKMARKLET_VERSION = 6;
 
 /** The extension's folder name, inside the "Get the extension" zip and after unzipping. */
 export const EXTENSION_FOLDER = "send-to-image-tools";
@@ -168,6 +168,57 @@ export function collectPhotoUrls(options: CollectOptions = {}): string[] {
   return list.slice(0, MAX).map((p) => p.url);
 }
 
+export interface FoundVideos {
+  /** Videos the page plays from one file (.mp4, .webm), in page order, with their poster image if any. */
+  videos: { url: string; poster?: string }[];
+  /** Videos that stream in pieces (blob: or a .m3u8/.mpd playlist, as Instagram and YouTube do): no file to save. */
+  streams: number;
+}
+
+/**
+ * The page's videos, for the extension's picker (generated into public/extension/collect.js, so it
+ * must not reference anything outside itself). Only a video that plays from one file can be
+ * downloaded as one; streamed ones are counted so the picker can say why they are missing.
+ */
+export function collectVideos(): FoundVideos {
+  const found = new Map<string, { url: string; poster?: string }>();
+  const isStream = (url: URL) => url.protocol === "blob:" || /\.(m3u8|mpd)$/i.test(url.pathname);
+  const fileUrl = (raw: string | null | undefined) => {
+    if (!raw || raw.startsWith("data:")) return undefined;
+    try {
+      return new URL(raw, location.href);
+    } catch {
+      return undefined;
+    }
+  };
+  const add = (url: URL, poster?: string) => {
+    if (/^https?:$/.test(url.protocol) && !found.has(url.href)) found.set(url.href, poster ? { url: url.href, poster } : { url: url.href });
+  };
+
+  let streams = 0;
+  for (const video of Array.from(document.querySelectorAll("video"))) {
+    // The source the browser picked first, then every listed one (lazy players park it in data-src).
+    const candidates = [
+      video.currentSrc,
+      video.getAttribute("src"),
+      video.getAttribute("data-src"),
+      ...Array.from(video.querySelectorAll("source")).flatMap((s) => [s.getAttribute("src"), s.getAttribute("data-src")]),
+    ]
+      .map(fileUrl)
+      .filter((u): u is URL => u !== undefined);
+    const file = candidates.find((u) => !isStream(u));
+    if (file) add(file, fileUrl(video.poster)?.href);
+    else if (candidates.length) streams++;
+  }
+  // A page's share video (og:video) is often the same file as its hero video, or the only one. It is
+  // just as often a player page (a YouTube or Vimeo embed), so only a video file address counts.
+  for (const meta of Array.from(document.querySelectorAll('meta[property="og:video"], meta[property="og:video:url"], meta[property="og:video:secure_url"]'))) {
+    const url = fileUrl(meta.getAttribute("content"));
+    if (url && /\.(mp4|webm|mov|m4v|ogv)$/i.test(url.pathname)) add(url);
+  }
+  return { videos: [...found.values()], streams };
+}
+
 /**
  * The bookmarklet's body. It is stringified into a javascript: URL (bookmarkletHref) with the
  * collector passed in, so it must not reference anything outside itself: every other helper lives
@@ -229,7 +280,7 @@ export function bookmarkletMain(origin: string, collect: () => string[]): void {
     if (e.source !== win || e.origin !== origin || e.data?.type !== "image-tools:ready") return;
     window.removeEventListener("message", onMessage);
     sent = true;
-    win.postMessage({ type: "image-tools:photos", version: 4, page: location.href, photos: await photos }, origin);
+    win.postMessage({ type: "image-tools:photos", version: 6, page: location.href, photos: await photos }, origin);
     done(`Sent ${list.length} photo${list.length === 1 ? "" : "s"} to Image Tools.`, 2500);
   };
   window.addEventListener("message", onMessage);

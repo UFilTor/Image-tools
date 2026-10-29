@@ -6,6 +6,7 @@ import {
   bookmarkletHref,
   bookmarkletMain,
   collectPhotoUrls,
+  collectVideos,
   parseSentPhotos,
   PHOTOS,
   READY,
@@ -137,6 +138,26 @@ describe("collectPhotoUrls", () => {
       "/img/diagram.svg",
       "/photos/a-large.jpg",
     ]);
+  });
+});
+
+describe("collectVideos", () => {
+  it("finds videos that play from one file, in page order, and counts the streamed ones", () => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<video src="/media/hero.mp4" poster="/media/hero-poster.jpg"></video>
+       <video><source src="/media/tour.webm" type="video/webm"><source src="/media/tour.mp4"></video>
+       <video src="blob:https://www.instagram.com/5f2c"></video>
+       <video><source src="/live/stream.m3u8"></video>
+       <video data-src="/media/lazy.mp4"></video>
+       <meta property="og:video" content="https://cdn.x/share.mp4">
+       <meta property="og:video:url" content="https://www.youtube.com/embed/abc123">`,
+    );
+    const { videos, streams } = collectVideos();
+    expect(videos.map((v) => new URL(v.url).pathname)).toEqual(["/media/hero.mp4", "/media/tour.webm", "/media/lazy.mp4", "/share.mp4"]);
+    expect(videos[0].poster).toMatch(/\/media\/hero-poster\.jpg$/);
+    expect(videos[1].poster).toBeUndefined();
+    expect(streams).toBe(2);
   });
 });
 

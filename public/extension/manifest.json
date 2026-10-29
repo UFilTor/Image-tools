@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Send to Image Tools",
-  "version": "1.4",
-  "description": "Downloads the images on the page you are looking at as they are, or sends them to Understory Image Tools.",
+  "version": "1.6",
+  "description": "Downloads the images and videos on the page you are looking at as they are, or sends the images to Understory Image Tools.",
   "action": {
-    "default_title": "Download or send this page's images",
+    "default_title": "Download this page's images and videos",
     "default_icon": {
       "16": "icon-16.png",
       "32": "icon-32.png"
