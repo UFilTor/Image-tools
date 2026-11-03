@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import {
   acceptsPhotos,
   BOOKMARKLET_PATH,
@@ -36,6 +38,7 @@ function img(src: string, { w = 0, h = 0, srcset = "", alt = "" } = {}) {
 
 afterEach(() => {
   document.body.innerHTML = "";
+  window.history.replaceState(null, "", "/");
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -158,6 +161,47 @@ describe("collectVideos", () => {
     expect(videos[0].poster).toMatch(/\/media\/hero-poster\.jpg$/);
     expect(videos[1].poster).toBeUndefined();
     expect(streams).toBe(2);
+  });
+
+  it("finds Instagram's video file in its page data, with the post's photo as poster, instead of counting the stream", () => {
+    // A logged-out Instagram post (instagram.com/p/DWPRuOVDdVd, 2026-11-03): the player streams from
+    // blob:, and the page data lists the same video as three files.
+    const data = document.createElement("script");
+    data.type = "application/json";
+    data.textContent = readFileSync(path.join(__dirname, "fixtures", "instagram", "post-video.json"), "utf8");
+    const broken = document.createElement("script");
+    broken.type = "application/json";
+    broken.textContent = '{"video_versions": [';
+    document.body.append(broken, data);
+    document.body.insertAdjacentHTML("beforeend", `<video src="blob:https://www.instagram.com/c334bedb"></video>`);
+    const { videos, streams } = collectVideos();
+    expect(videos).toHaveLength(1);
+    // The first of the three, the one Instagram prefers.
+    expect(videos[0].url).toMatch(/^https:\/\/scontent-[\w-]+\.cdninstagram\.com\/o1\/v\/t2\/f2\/m367\/\w+\.mp4\?/);
+    expect(videos[0].poster).toMatch(/^https:\/\/scontent-[\w-]+\.cdninstagram\.com\/v\/t51\./);
+    expect(streams).toBe(0);
+  });
+
+  it("on a post's own address, offers only that post's videos: Instagram keeps the first page's data after opening another post", () => {
+    const pageData = (json: string) => {
+      const data = document.createElement("script");
+      data.type = "application/json";
+      data.textContent = json;
+      document.body.append(data);
+    };
+    pageData(readFileSync(path.join(__dirname, "fixtures", "instagram", "post-video.json"), "utf8"));
+    // A carousel item names its post by the parent's id, not by code.
+    pageData(
+      JSON.stringify({ items: [{ id: "1_2", code: "ABC", carousel_media: [{ carousel_parent_id: "1_2", video_versions: [{ url: "https://cdn.x/abc.mp4" }] }] }] }),
+    );
+    document.body.insertAdjacentHTML("beforeend", `<video src="blob:https://www.instagram.com/c334bedb"></video>`);
+
+    window.history.replaceState(null, "", "/zostan_zeglarzem_boszkowo/reel/DfHl1iUuSSa/");
+    expect(collectVideos()).toEqual({ videos: [], streams: 1 });
+    window.history.replaceState(null, "", "/reel/DWPRuOVDdVd/");
+    expect(collectVideos().videos.map((v) => new URL(v.url).hostname)).toEqual([expect.stringMatching(/cdninstagram\.com$/)]);
+    window.history.replaceState(null, "", "/p/ABC/");
+    expect(collectVideos()).toEqual({ videos: [{ url: "https://cdn.x/abc.mp4" }], streams: 0 });
   });
 });
 

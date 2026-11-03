@@ -5,7 +5,7 @@ A browser extension for Understory Image Tools. Click its button on any website 
 - **Download** the ones you pick exactly as the site serves them, into `Downloads/<site name>/`.
 - **Send to Image Tools** to crop, extend or upscale the images.
 
-Videos that stream in pieces, as on Instagram or YouTube, have no single file to save, so the picker counts them but can't download them.
+Videos that stream in pieces, as on YouTube, have no single file to save, so the picker counts them but can't download them. Instagram streams too, but a post you open directly (or reload) also lists its video file, so the picker can download that one.
 
 Works in Chrome and other Chromium-based browsers.
 

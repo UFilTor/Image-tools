@@ -14,13 +14,13 @@ export const READY = "image-tools:ready";
 export const PHOTOS = "image-tools:photos";
 /**
  * A saved bookmark keeps the code it was dragged with, and the extension the code it was built
- * with. Bump this whenever what they do changes (bookmarkletMain, collectPhotoUrls or the
+ * with. Bump this whenever what they do changes (bookmarkletMain, collectPhotoUrls, collectVideos or the
  * extension's hand-written files, and the literal inside bookmarkletMain), then run
  * `npm run build:extension`: Image Tools then asks for
  * the bookmark to be dragged again or the extension reloaded. Bookmarks from before versions existed
  * send none and count as 0.
  */
-export const BOOKMARKLET_VERSION = 6;
+export const BOOKMARKLET_VERSION = 7;
 
 /** The extension's folder name, inside the "Get the extension" zip and after unzipping. */
 export const EXTENSION_FOLDER = "send-to-image-tools";
@@ -216,7 +216,46 @@ export function collectVideos(): FoundVideos {
     const url = fileUrl(meta.getAttribute("content"));
     if (url && /\.(mp4|webm|mov|m4v|ogv)$/i.test(url.pathname)) add(url);
   }
-  return { videos: [...found.values()], streams };
+  // Instagram streams every video (blob:), but a freshly loaded page carries its data as inline JSON,
+  // which lists a file per video under video_versions (Instagram's preferred one first) next to the
+  // post's photo (image_versions2). A post opened from the feed loads that data out of sight, and the
+  // first page's data stays behind, so on a post's own address only that post's videos count: an item
+  // names its post by code, a carousel item by its parent's id.
+  const postCode = location.pathname.match(/\/(?:p|reels?|tv)\/([\w-]+)/)?.[1];
+  const items: { url: URL; poster?: string; code?: string; parentId?: string }[] = [];
+  const codeById = new Map<string, string>();
+  for (const script of Array.from(document.querySelectorAll('script[type="application/json"]'))) {
+    const text = script.textContent ?? "";
+    if (!text.includes('"video_versions"')) continue;
+    try {
+      JSON.parse(text, function (key, value) {
+        if (key === "code" && typeof value === "string" && typeof this.id === "string") codeById.set(this.id, value);
+        const raw = key === "video_versions" && Array.isArray(value) ? value[0]?.url : undefined;
+        const url = typeof raw === "string" ? fileUrl(raw) : undefined;
+        if (url) {
+          const poster = this.image_versions2?.candidates?.[0]?.url;
+          items.push({
+            url,
+            poster: typeof poster === "string" ? fileUrl(poster)?.href : undefined,
+            code: typeof this.code === "string" ? this.code : undefined,
+            parentId: typeof this.carousel_parent_id === "string" ? this.carousel_parent_id : undefined,
+          });
+        }
+        return value;
+      });
+    } catch {
+      // Not JSON after all: nothing to read.
+    }
+  }
+  const beforeData = found.size;
+  for (const item of items) {
+    const code = item.code ?? (item.parentId === undefined ? undefined : codeById.get(item.parentId));
+    // An item whose post can't be told is kept.
+    if (!postCode || code === undefined || code === postCode) add(item.url, item.poster);
+  }
+  // TODO(simplification): assumes every file found in the page data is one of the streamed videos,
+  // so it isn't counted twice. Upgrade path: match each <video> to its post.
+  return { videos: [...found.values()], streams: Math.max(0, streams - (found.size - beforeData)) };
 }
 
 /**
@@ -280,7 +319,7 @@ export function bookmarkletMain(origin: string, collect: () => string[]): void {
     if (e.source !== win || e.origin !== origin || e.data?.type !== "image-tools:ready") return;
     window.removeEventListener("message", onMessage);
     sent = true;
-    win.postMessage({ type: "image-tools:photos", version: 6, page: location.href, photos: await photos }, origin);
+    win.postMessage({ type: "image-tools:photos", version: 7, page: location.href, photos: await photos }, origin);
     done(`Sent ${list.length} photo${list.length === 1 ? "" : "s"} to Image Tools.`, 2500);
   };
   window.addEventListener("message", onMessage);

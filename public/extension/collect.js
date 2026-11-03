@@ -120,5 +120,39 @@ export const collectVideos = function collectVideos() {
         if (url && /\.(mp4|webm|mov|m4v|ogv)$/i.test(url.pathname))
             add(url);
     }
-    return { videos: [...found.values()], streams };
+    const postCode = location.pathname.match(/\/(?:p|reels?|tv)\/([\w-]+)/)?.[1];
+    const items = [];
+    const codeById = new Map();
+    for (const script of Array.from(document.querySelectorAll('script[type="application/json"]'))) {
+        const text = script.textContent ?? "";
+        if (!text.includes('"video_versions"'))
+            continue;
+        try {
+            JSON.parse(text, function (key, value) {
+                if (key === "code" && typeof value === "string" && typeof this.id === "string")
+                    codeById.set(this.id, value);
+                const raw = key === "video_versions" && Array.isArray(value) ? value[0]?.url : undefined;
+                const url = typeof raw === "string" ? fileUrl(raw) : undefined;
+                if (url) {
+                    const poster = this.image_versions2?.candidates?.[0]?.url;
+                    items.push({
+                        url,
+                        poster: typeof poster === "string" ? fileUrl(poster)?.href : undefined,
+                        code: typeof this.code === "string" ? this.code : undefined,
+                        parentId: typeof this.carousel_parent_id === "string" ? this.carousel_parent_id : undefined,
+                    });
+                }
+                return value;
+            });
+        }
+        catch {
+        }
+    }
+    const beforeData = found.size;
+    for (const item of items) {
+        const code = item.code ?? (item.parentId === undefined ? undefined : codeById.get(item.parentId));
+        if (!postCode || code === undefined || code === postCode)
+            add(item.url, item.poster);
+    }
+    return { videos: [...found.values()], streams: Math.max(0, streams - (found.size - beforeData)) };
 };

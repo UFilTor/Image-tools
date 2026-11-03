@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Send to Image Tools",
-  "version": "1.6",
+  "version": "1.7",
   "description": "Downloads the images and videos on the page you are looking at as they are, or sends the images to Understory Image Tools.",
   "action": {
     "default_title": "Download this page's images and videos",
